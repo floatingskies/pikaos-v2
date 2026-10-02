@@ -101,6 +101,15 @@ jobs:
         with:
           go-version: 'stable'
 
+      - name: Fetch the pikman source
+        # The job below asserts that pikman builds with GOPROXY=off, which needs
+        # the sources. Cloning here (shallow) keeps ~1MB of vendored Go code out
+        # of this repository; the assertion stays meaningful because the build
+        # itself still runs with the network disabled for module fetching.
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://git.pika-os.com/general-packages/pikman.git upstream/pikman
+
       - name: Build pikman with GOPROXY=off (deps must be vendored)
         run: |
           set -euo pipefail
@@ -219,6 +228,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Fetch the pikman source
+        # The job below asserts that pikman builds with GOPROXY=off, which needs
+        # the sources. Cloning here (shallow) keeps ~1MB of vendored Go code out
+        # of this repository; the assertion stays meaningful because the build
+        # itself still runs with the network disabled for module fetching.
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://git.pika-os.com/general-packages/pikman.git upstream/pikman
+
       - name: Assert we don't point apt at upstream PikaOS
         run: |
           set -euo pipefail
