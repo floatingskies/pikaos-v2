@@ -24,6 +24,8 @@ case "$1" in
   local:*) SRC="${1#local:}"; NAME="$(basename "$SRC")" ;;
   *)       SRC="$1";          NAME="${1##*/}" ;;
 esac
+# Unique work-dir key: two orgs may ship a package with the same basename.
+KEY="${SRC//\//__}"
 
 build_image() {
   if docker image inspect "$IMAGE" >/dev/null 2>&1; then return; fi
@@ -37,7 +39,7 @@ build_image() {
 }
 
 fetch_source() {
-  local dst="$WORK/$NAME"
+  local dst="$WORK/$KEY"
   rm -rf "$dst"
   if [ -d "$SRC" ]; then
     log "using local source $SRC -> $dst"
@@ -55,7 +57,7 @@ fetch_source() {
 run_build() {
   log "building $NAME for x86-64-v2"
   docker run --rm \
-    -v "$WORK/$NAME:/work" \
+    -v "$WORK/$KEY:/work" \
     -w /work \
     -e FORCE_UNSAFE_CONFIGURE=1 \
     "$IMAGE" bash -c '
@@ -71,7 +73,7 @@ collect() {
   mkdir -p "$REPO/pool/main"
   local found=0 f
   shopt -s nullglob
-  for f in "$WORK/$NAME"/output/*.deb "$WORK/$NAME"/*.deb; do
+  for f in "$WORK/$KEY"/output/*.deb "$WORK/$KEY"/*.deb; do
     cp -f "$f" "$REPO/pool/main/"; echo "  + $(basename "$f")"; found=1
   done
   [ "$found" = 1 ] || { echo "ERROR: $NAME produced no .deb" >&2; exit 1; }

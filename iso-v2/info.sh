@@ -74,7 +74,7 @@ systemsettings kwin-x11 xserver-xorg xserver-xorg-video-all xserver-xorg-input-a
 export INSTALLER_PKGS="
 gdisk parted dosfstools rsync fdisk efibootmgr os-prober
 grub-common grub-efi-amd64-bin grub-pc-bin
-policykit-1 zenity
+pkexec polkitd zenity
 "
 
 # Packages for the on-ISO pool (installer may need them without network).

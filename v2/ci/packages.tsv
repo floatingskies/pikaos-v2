@@ -3,6 +3,69 @@
 #
 # Format: one "<org>/<name>" per line. Blank lines and lines starting with '#'
 # are ignored. The CI matrix and v2/ci/repo-index.sh both read this file.
+#
+# Scope: the KDE desktop plus the PikaOS application suite, rebuilt for
+# x86-64-v2 from git.pika-os.com and compiled against normal Debian sid (the
+# builder image is Debian, not the PikaOS v3 repositories).
+#
+# boot / live (already v2)
 boot-packages/booster
 boot-packages/pika-live-booster-hooks
 boot-packages/pika-refind-theme
+
+# boot branding
+boot-packages/plymouth-theme-pika
+boot-packages/pika-refind-btrfs-hooks
+boot-packages/refind-btrfs
+
+# meta packages
+meta-packages/pika-audio
+meta-packages/pika-baseos
+meta-packages/pika-meta
+
+# KDE desktop
+kde-packages/pika-kde-desktop
+kde-packages/pika-kde-settings
+kde-packages/kio-admin
+kde-packages/papirus-colors
+kde-packages/akondi-mime5
+kde-packages/supergfxctl-plasmoid
+
+# Pika GUI applications
+custom-gui-packages/pika-first-setup
+custom-gui-packages/pika-welcome
+custom-gui-packages/pika-kernel-manager
+custom-gui-packages/pika-drivers
+custom-gui-packages/pika-device-manager
+custom-gui-packages/pikman-update-manager
+custom-gui-packages/falcond-gui
+custom-gui-packages/pika-installer-gtk4
+
+# Pika applications / desktop integration (from general-packages)
+general-packages/pikman
+general-packages/pikainstall
+general-packages/pikafetch
+general-packages/falcon
+general-packages/falcond
+general-packages/pika-sources
+general-packages/pika-wallpapers
+general-packages/pika-lightdm
+general-packages/pika-shell-profiles
+general-packages/pika-apx-configs
+general-packages/pika-paste
+general-packages/pika-pkg-template
+general-packages/pikd-pharser-rs
+general-packages/sound-theme-pika
+general-packages/desktop-base
+general-packages/base-files
+general-packages/pam-any
+general-packages/pam-parallel
+general-packages/apx
+general-packages/apx-gui
+general-packages/popsicle
+general-packages/pwvucontrol
+general-packages/dmemcg-booster
+general-packages/apt-btrfs-snapper
+general-packages/ananicy-cpp
+general-packages/ananicy-rules
+general-packages/tuned
