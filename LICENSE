@@ -1,12 +1,12 @@
                     GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 
- WoofOS v2 is free software: you can redistribute it and/or modify it under
+ PikaOS v2 community port is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
 Foundation, either version 3 of the License, or (at your option) any later
 version.
 
- WoofOS v2 is distributed in the hope that it will be useful, but WITHOUT ANY
+ PikaOS v2 community port is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 
@@ -18,13 +18,16 @@ this work in the file LICENSE.GPL-3, as the licence requires.
 
 Upstream components
 -------------------
-WoofOS v2 is a derivative of PikaOS (https://pika-os.com, git.pika-os.com) on
-Debian sid. It ships packages rebuilt from the PikaOS git repositories under
-their original names and under their own licences, which are mostly GPL-3.0.
-Rebranding this derivative does not remove any obligation imposed by those
-licences: every package keeps its upstream copyright notices, AUTHORS file and
-licence text in /usr/share/doc/<package>/. Those must be preserved when
-redistributing the corresponding binaries.
+This is a community port: an unofficial build of PikaOS v2 targeting the
+x86-64-v2 ISA on Debian sid, rebuilt from the PikaOS git repositories
+(https://pika-os.com, git.pika-os.com) under their original names and under
+their own licences, which are mostly GPL-3.0. It is not endorsed by or
+affiliated with the PikaOS project.
+
+Rebuilding does not remove any obligation imposed by those licences: every
+package keeps its upstream copyright notices, AUTHORS file and licence text in
+/usr/share/doc/<package>/. Those must be preserved when redistributing the
+corresponding binaries.
 
 PikaOS
   Copyright (C) the PikaOS project and contributors
@@ -49,5 +52,4 @@ are preserved:
     Copyright: 2021 Alexey Varfolomeev; debian/* 2022 Erich Eickmeyer
     License: GPL-3
 
-Artwork whose licence does not clearly permit redistribution is not shipped; the
-distributor's own branding is used instead.
+Artwork whose licence does not clearly permit redistribution is not shipped.

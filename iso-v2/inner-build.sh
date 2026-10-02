@@ -94,6 +94,11 @@ deb http://deb.debian.org/debian sid main contrib non-free non-free-firmware
 deb [trusted=yes] file:$REPO_MNT ./
 EOF
 
+# The v2 repo ships PikaOS' own desktop-base (branding, active-theme), which
+# collides with the Debian one debootstrap installed. Remove Debian's first so
+# apt can take PikaOS' version instead of refusing the transaction.
+chroot "$ROOTFS_PATH" apt-get purge -y desktop-base >/dev/null 2>&1 || true
+
 log "apt-get install ($MODE packages)"
 PKGS_LINE="$(printf '%s' "$PKGS" | tr '\n' ' ')"
 if [ "$MODE" = full ]; then APT_OPTS=""; else APT_OPTS="--no-install-recommends"; fi
@@ -121,9 +126,9 @@ install -d "$ROOTFS_PATH/usr/share/applications"
 cat > "$ROOTFS_PATH/usr/share/applications/pika-install-cli.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=Install WoofOS v2 (command line)
-Name[pt_BR]=Instalar WoofOS v2 (linha de comando)
-Comment=Install WoofOS v2 to your disk (x86-64-v2), text mode
+Name=Install PikaOS v2 (command line)
+Name[pt_BR]=Instalar PikaOS v2 (linha de comando)
+Comment=Install PikaOS v2 to your disk (x86-64-v2), text mode
 Exec=pkexec /usr/bin/pika-install-cli
 Icon=drive-harddisk
 Terminal=true
@@ -156,20 +161,20 @@ chroot "$ROOTFS_PATH" /bin/bash /root/live-setup.sh || die "live-setup failed"
 
 # Distribution identity: os-release, about logo, apt behaviour, KDE debloat and
 # the licence notices. Artwork from the repo is staged first.
-install -d "$ROOTFS_PATH/usr/share/woofos/branding" "$ROOTFS_PATH/usr/share/backgrounds"
+install -d "$ROOTFS_PATH/usr/share/pikaos/branding" "$ROOTFS_PATH/usr/share/backgrounds"
 for art in "$ROOT"/branding/*; do
-    [ -f "$art" ] && install -Dm0644 "$art" "$ROOTFS_PATH/usr/share/woofos/branding/$(basename "$art")"
+    [ -f "$art" ] && install -Dm0644 "$art" "$ROOTFS_PATH/usr/share/pikaos/branding/$(basename "$art")"
 done
 # Stable name for the branding script, whatever the artwork is called upstream.
-if [ -f "$ROOTFS_PATH/usr/share/woofos/branding/woofos-logo.png" ]; then
-    cp -f "$ROOTFS_PATH/usr/share/woofos/branding/woofos-logo.png" \
-          "$ROOTFS_PATH/usr/share/woofos/branding/logo.png"
+if [ -f "$ROOTFS_PATH/usr/share/pikaos/branding/pika-logo.png" ]; then
+    cp -f "$ROOTFS_PATH/usr/share/pikaos/branding/pika-logo.png" \
+          "$ROOTFS_PATH/usr/share/pikaos/branding/logo.png"
 fi
 for art in "$ROOT"/"custom wallpaper"/*; do
     [ -f "$art" ] && install -Dm0644 "$art" "$ROOTFS_PATH/usr/share/backgrounds/$(basename "$art")"
 done
-install -Dm0755 "$HERE/config/woofos-branding.sh" "$ROOTFS_PATH/root/woofos-branding.sh"
-chroot "$ROOTFS_PATH" /bin/bash /root/woofos-branding.sh || die "woofos-branding failed"
+install -Dm0755 "$HERE/config/pikaos-port.sh" "$ROOTFS_PATH/root/pikaos-port.sh"
+chroot "$ROOTFS_PATH" /bin/bash /root/pikaos-port.sh || die "pikaos-port failed"
 
 log "resolving kernel + initrd"
 ISO_KERNEL="$(basename "$(ls "$ROOTFS_PATH"/boot/vmlinuz-* | head -1)" | sed 's/^vmlinuz-//')"
@@ -177,7 +182,7 @@ ISO_KERNEL="$(basename "$(ls "$ROOTFS_PATH"/boot/vmlinuz-* | head -1)" | sed 's/
 echo "kernel: $ISO_KERNEL"
 
 umount_all
-rm -rf "$ROOTFS_PATH$REPO_MNT" "$ROOTFS_PATH/root/live.env" "$ROOTFS_PATH/root/live-setup.sh" "$ROOTFS_PATH/root/woofos-branding.sh"
+rm -rf "$ROOTFS_PATH$REPO_MNT" "$ROOTFS_PATH/root/live.env" "$ROOTFS_PATH/root/live-setup.sh" "$ROOTFS_PATH/root/pikaos-port.sh"
 
 # ---------------------------------------------------------------------------
 # 3. squashfs

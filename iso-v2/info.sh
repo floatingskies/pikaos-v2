@@ -10,19 +10,19 @@
 HERE="${HERE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 ROOT="${ROOT:-$(cd "$HERE/.." && pwd)}"
 
-export ISO_DISTNAME="WoofOSv2"
+export ISO_DISTNAME="PikaOSv2"
 export ISO_DESKTOP="KDE"
 export ISO_ARCH="amd64"
 export ISO_RELEASE="4.0"
 export ISO_PATCH="1"
 export ISO_DATE="$(date +%y.%m.%d)"
-export ISO_LABEL="WOOF $ISO_DATE $ISO_PATCH"
+export ISO_LABEL="PKV2 $ISO_DATE $ISO_PATCH"
 export ISO_IMAGE="$ISO_DISTNAME-$ISO_DESKTOP-$ISO_RELEASE-$ISO_ARCH-$(date +%F)-$ISO_PATCH"
 
-export LIVE_HOSTNAME="woofos"
-export LIVE_USER="woofos"
+export LIVE_HOSTNAME="pikaos"
+export LIVE_USER="pikaos"
 export LIVE_UID=1001
-export LIVE_GECOS="WoofOS Live User"
+export LIVE_GECOS="PikaOS Live User"
 
 export BUILD="$HERE/build"
 export ROOTFS="$BUILD/rootfs"
@@ -84,6 +84,7 @@ systemsettings kwin-x11 xserver-xorg xserver-xorg-video-all xserver-xorg-input-a
 # polkit rule, and the GTK4 helper would shadow it.
 export PIKA_PKGS="
 pika-wallpapers sound-theme-pika papirus-colors plymouth-theme-pika
+desktop-base pika-shell-profiles
 pika-kde-desktop pika-kde-settings plasma-supergfxctl kio-admin
 pika-shell-profile-common pika-shell-profile-otter
 pika-welcome pika-first-setup-gtk4
@@ -92,7 +93,6 @@ pikman pikman-update-manager apx popsicle-gtk falcond-gui
 pika-apx-configs pika-sources
 libpam-any libpam-parallel apt-btrfs-snapper
 ananicy-cpp ananicy-rules dmemcg-booster
-pika-audio-pipewire pika-baseos-desktop
 "
 
 # Installer + offline tooling. The installed system is produced by rsyncing the

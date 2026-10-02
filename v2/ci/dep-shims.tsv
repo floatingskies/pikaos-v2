@@ -37,3 +37,48 @@ scx	-
 supergfxctl	-
 webapp-manager	-
 xdg-desktop-portal-otter	-
+pikainstall	-
+pika-package-manager	-
+pika-paste	-
+fwupdate	-
+libextest1	-
+blivet-gui	-
+
+# Metapackage closure (pika-meta: gaming, codecs, cuda, rocm, oneapi,
+# libreoffice, hhd, ...). These are accelerator/vendor helpers and
+# PikaOS-only apps that Debian sid does not ship. Dropping them lets the
+# metapackages install on a generic sid base; the parts that do exist in
+# sid (steam, lutris, wine, mangohud, gamescope, ffmpeg, ...) stay.
+# NOTE: pika-codecs-meta and pika-gameutils-meta are produced by
+# pika-meta itself, so they are not shimmed.
+comgr	-
+cuda-toolkit	-
+faugus-launcher	-
+heroic-games-launcher	-
+hip-runtime-amd	-
+hsa-rocr	-
+inputplumber	-
+intel-gpu-client	-
+intel-gpu-compute	-
+intel-level-zero-gpu	-
+intel-oneapi-common-vars	-
+libhiprt64	-
+nvidia-dlss-switcher	-
+openmp-extras-runtime	-
+pika-amdgpu-core	-
+pika-drivers	-
+protonplus	-
+rocm-core	-
+rocm-device-libs	-
+rocm-hip-runtime	-
+rocm-hip-runtime-dev	-
+rocm-language-runtime	-
+rocm-llvm	-
+rocm-opencl	-
+rocm-opencl-runtime	-
+steamos-manager	-
+steamos-powerbuttond	-
+umu-launcher	-
+vanilla-apx-gui	-
+# sid ships plain wine; keep the group resolvable.
+wine-staging	wine

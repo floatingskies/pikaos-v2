@@ -70,19 +70,26 @@ for my $file (@files) {
             push @out, "Architecture: $arch\n";
             next;
         }
-        if ($line =~ /^(?:$field_re)\s*:\s*(.*)$/s) {
+        if ($line =~ /^(?:$field_re)[ \t]*:[ \t]*(.*)$/) {
             my ($field, $rest) = ($&, $1);
             $field =~ s/\s*:.*//s;
 
-            # Absorb folded continuation lines.
+            # Absorb folded continuation lines. Upstream PikaOS metapackages
+            # put whole-line comments inside the dependency list ("# Codecs"),
+            # which dpkg-gencontrol rejects, so those are dropped rather than
+            # breaking the stanza.
             while (defined(my $nxt = <$in>)) {
-                if ($nxt =~ /^[ \t]\S/) {
+                if ($nxt =~ /^[ \t]+\S/) {
                     $rest .= ' ' . $nxt;
+                } elsif ($nxt =~ /^[ \t]*\#/) {
+                    next;
                 } else {
                     $pending = $nxt;
                     last;
                 }
             }
+
+            $rest =~ s/\s*\#.*$//mg;
 
             my @deps;
             for my $dep (split /,/, $rest) {

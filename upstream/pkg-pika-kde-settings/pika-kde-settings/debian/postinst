@@ -1,8 +1,0 @@
-#!/bin/sh
-
-set -e
-
-cp -f /etc/skel/.config/examples/metadata.desktop /usr/share/plasma/desktoptheme/Orchis-dark/
-cp -f /etc/skel/.config/examples/.profile /etc/skel/
-cp -f /usr/share/backgrounds/pika/guard_it_well_okay__by_neytirix_ddcc1wt.jpg /usr/share/sddm/themes/Orchis/
-cp -f /etc/skel/.config/examples/theme.conf.user /usr/share/sddm/themes/Orchis/
