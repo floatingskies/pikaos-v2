@@ -1,0 +1,39 @@
+# Dependency shims for the x86-64-v2 rebuild.
+#
+# The PikaOS packages still declare KF5 and PikaOS-only helpers in their
+# control files. Plain Debian sid has neither: the KF5 frameworks were replaced
+# by KF6, and the PikaOS-only helpers (otter-*, webapp-manager, cfhdb, pik, ...)
+# are not packaged for Debian at all. Without rewriting them, apt refuses the
+# whole install set, which is why the ISO could not ship these tools.
+#
+# v2/ci/apply-dep-shims.pl rewrites every debian/control found in a source tree
+# before dpkg-buildpackage runs, so the rebuilt packages install on a KF6/sid
+# base. Dropping a Depends only means "not guaranteed present"; anything the
+# desktop itself needs comes from kde-plasma-desktop.
+#
+# format: <name-in-depends>  <action>
+#   "-"          drop the dependency entirely
+#   <other-name> replace the dependency, keeping any version constraint
+#
+# KF5 -> KF6 era names. Dropped: KF5-only modules and PikaOS-only helpers.
+appmenu-gtk2-module	-
+baloo-kf5	-
+cfhdb	-
+falcond	-
+kde-config-systemd	-
+kernel-pika	-
+khotkeys	-
+kimageformat-plugins	-
+otter-files	-
+otter-monitor	-
+otter-pkg	-
+otter-shell	-
+otter-shot	-
+otter-term	-
+pik	-
+pikafetch	-
+pop-fonts	-
+scx	-
+supergfxctl	-
+webapp-manager	-
+xdg-desktop-portal-otter	-

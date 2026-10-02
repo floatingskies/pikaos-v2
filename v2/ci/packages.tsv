@@ -21,9 +21,7 @@ boot-packages/refind-btrfs
 # meta packages
 meta-packages/pika-audio
 meta-packages/pika-baseos
-# pika-meta: upstream debian/control has malformed Depends
-# (e.g. "mesa-vulkan-drivers:i386 mesa-vulkan-drivers" with no comma).
-# meta-packages/pika-meta
+meta-packages/pika-meta
 
 # KDE desktop
 kde-packages/pika-kde-desktop

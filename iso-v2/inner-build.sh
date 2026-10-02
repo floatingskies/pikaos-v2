@@ -109,19 +109,22 @@ chroot "$ROOTFS_PATH" /usr/bin/env PKGS="$PKGS_LINE" APT_OPTS="$APT_OPTS" /bin/b
 # 2b. stage the on-ISO installer (works offline), its desktop launcher and the
 #     polkit rule that lets the live user run it without a password prompt.
 # ---------------------------------------------------------------------------
-log "staging the installer (pika-install)"
-install -Dm0755 "$ROOT/config/pika-install"    "$ROOTFS_PATH/usr/bin/pika-install"
+# pika-installer-gtk4 owns /usr/bin/pika-install (it ships that path itself),
+# so the in-tree CLI installer is staged as pika-install-cli. Installing both
+# under the same name is a dpkg conflict and would fail the ISO build.
+log "staging the CLI installer (pika-install-cli)"
+install -Dm0755 "$ROOT/config/pika-install"    "$ROOTFS_PATH/usr/bin/pika-install-cli"
 install -Dm0755 "$ROOT/config/pika-cpuidetect" "$ROOTFS_PATH/usr/bin/pika-cpuidetect"
-ln -sf /usr/bin/pika-install "$ROOTFS_PATH/usr/sbin/pika-install"
+ln -sf /usr/bin/pika-install-cli "$ROOTFS_PATH/usr/sbin/pika-install-cli"
 
 install -d "$ROOTFS_PATH/usr/share/applications"
-cat > "$ROOTFS_PATH/usr/share/applications/pika-install.desktop" <<'EOF'
+cat > "$ROOTFS_PATH/usr/share/applications/pika-install-cli.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=Install PikaOS v2
-Name[pt_BR]=Instalar PikaOS v2
-Comment=Install PikaOS v2 to your disk (x86-64-v2)
-Exec=pkexec /usr/bin/pika-install
+Name=Install WoofOS v2 (command line)
+Name[pt_BR]=Instalar WoofOS v2 (linha de comando)
+Comment=Install WoofOS v2 to your disk (x86-64-v2), text mode
+Exec=pkexec /usr/bin/pika-install-cli
 Icon=drive-harddisk
 Terminal=true
 Categories=System;
@@ -133,7 +136,7 @@ cat > "$ROOTFS_PATH/etc/polkit-1/rules.d/49-pika-install.rules" <<'EOF'
 // Let members of the live "sudo" group launch the installer without a prompt.
 polkit.addRule(function(action, subject) {
     if (action.id == "org.freedesktop.policykit.exec" &&
-        action.lookup("program") == "/usr/bin/pika-install" &&
+        action.lookup("program") == "/usr/bin/pika-install-cli" &&
         subject.isInGroup("sudo")) {
         return polkit.Result.YES;
     }
@@ -151,13 +154,25 @@ EOF
 install -m 0755 "$HERE/config/live-setup.sh" "$ROOTFS_PATH/root/live-setup.sh"
 chroot "$ROOTFS_PATH" /bin/bash /root/live-setup.sh || die "live-setup failed"
 
+# Distribution identity: os-release, about logo, apt behaviour, KDE debloat and
+# the licence notices. Artwork from the repo is staged first.
+install -d "$ROOTFS_PATH/usr/share/woofos/branding" "$ROOTFS_PATH/usr/share/backgrounds"
+for art in "$ROOT"/branding/*; do
+    [ -f "$art" ] && install -Dm0644 "$art" "$ROOTFS_PATH/usr/share/woofos/branding/$(basename "$art")"
+done
+for art in "$ROOT"/"custom wallpaper"/*; do
+    [ -f "$art" ] && install -Dm0644 "$art" "$ROOTFS_PATH/usr/share/backgrounds/$(basename "$art")"
+done
+install -Dm0755 "$HERE/config/woofos-branding.sh" "$ROOTFS_PATH/root/woofos-branding.sh"
+chroot "$ROOTFS_PATH" /bin/bash /root/woofos-branding.sh || die "woofos-branding failed"
+
 log "resolving kernel + initrd"
 ISO_KERNEL="$(basename "$(ls "$ROOTFS_PATH"/boot/vmlinuz-* | head -1)" | sed 's/^vmlinuz-//')"
 [ -f "$ROOTFS_PATH/boot/initrd.img-$ISO_KERNEL" ] || die "initrd.img-$ISO_KERNEL not produced"
 echo "kernel: $ISO_KERNEL"
 
 umount_all
-rm -rf "$ROOTFS_PATH$REPO_MNT" "$ROOTFS_PATH/root/live.env" "$ROOTFS_PATH/root/live-setup.sh"
+rm -rf "$ROOTFS_PATH$REPO_MNT" "$ROOTFS_PATH/root/live.env" "$ROOTFS_PATH/root/live-setup.sh" "$ROOTFS_PATH/root/woofos-branding.sh"
 
 # ---------------------------------------------------------------------------
 # 3. squashfs

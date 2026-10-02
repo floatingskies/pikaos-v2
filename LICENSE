@@ -1,26 +1,42 @@
-MIT License
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
 
-Copyright (c) 2026 PikaOS v2 contributors
+ WoofOS v2 is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+ WoofOS v2 is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+ You should have received a copy of the GNU General Public License along with
+this program.  If not, see <https://www.gnu.org/licenses/>.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+ The full text of the GNU General Public License version 3 is distributed with
+this work in the file LICENSE.GPL-3, as the licence requires.
 
----
+Upstream components
+-------------------
+WoofOS v2 is a derivative of PikaOS (https://pika-os.com, git.pika-os.com) on
+Debian sid. It ships packages rebuilt from the PikaOS git repositories under
+their original names and under their own licences, which are mostly GPL-3.0.
+Rebranding this derivative does not remove any obligation imposed by those
+licences: every package keeps its upstream copyright notices, AUTHORS file and
+licence text in /usr/share/doc/<package>/. Those must be preserved when
+redistributing the corresponding binaries.
 
-The vendored PikaOS components under upstream/ retain their original licenses
-(see the LICENSE / copyright files inside each component directory).
+PikaOS
+  Copyright (C) the PikaOS project and contributors
+  Licensed under the GNU General Public License v3 (per-package; see each
+  package's copyright file)
+
+Debian
+  Copyright (C) the Debian project and contributors
+  Packages from the Debian archive keep their own licences and copyright files.
+
+Image assets
+------------
+Only assets with an explicit free licence are redistributed. The papirus icon
+theme is GPL-3.0. Artwork that is not known to permit reuse with attribution is
+not redistributed; the distributor's own branding is used instead.

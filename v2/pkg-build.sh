@@ -53,6 +53,15 @@ fetch_source() {
   mkdir -p "$dst/pika-build-config"
   cp "$HERE/build-config/amd64-v2.sh" "$dst/pika-build-config/amd64-v2.sh"
 
+  # KF5/PikaOS-only dependencies would make these packages uninstallable on a
+  # KF6 sid base; rewrite them out of every control file first. See
+  # v2/ci/dep-shims.tsv.
+  local shimmed=0
+  while IFS= read -r ctl; do
+    perl "$HERE/ci/apply-dep-shims.pl" "$HERE/ci/dep-shims.tsv" "$ctl" && shimmed=1
+  done < <(find "$dst" -path '*/debian/control' -type f)
+  [ "$shimmed" = 1 ] && log "dep-shims applied"
+
   # PikaOS' changelog bot (and old upstream entries) stamp signoff trailers with
   # "GMT"/"UTC" or a short "+00"; the newer Debian sid changelog parser rejects
   # anything that is not "+HHMM"/"-HHMM" ("Could not parse timestamp ... signoff

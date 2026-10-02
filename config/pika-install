@@ -173,18 +173,40 @@ choose_disk() {
     else
         say "${B}Available disks:${N}"
         local -a disks=()
-        mapfile -t disks < <(lsblk -dno NAME,SIZE,MODEL,TYPE | awk '$4=="disk"{print}')
+        # Never filter by column position: MODEL contains spaces on most real
+        # drives ("Samsung SSD 860 EVO"), so $4=="disk" never matched and the
+        # installer died with "no block devices found". Match on the TYPE
+        # column of a NAME,TYPE-only listing instead, which is position-safe.
+        while read -r name type; do
+            [ "$type" = disk ] || continue
+            case "$name" in loop*|ram*|zram*|dm-*) continue ;; esac
+            disks+=("/dev/$name")
+        done < <(lsblk -dn -o NAME,TYPE 2>/dev/null)
 
-        if [ "${#disks[@]}" -eq 0 ]; then die "no block devices found"; fi
+        # Fallback when lsblk cannot answer (no udev, /sys not mounted in a
+        # minimal live session): enumerate the kernel's block devices directly.
+        if [ "${#disks[@]}" -eq 0 ] && [ -d /sys/block ]; then
+            local d
+            for d in /sys/block/*; do
+                [ -e "$d" ] || continue
+                d="$(basename "$d")"
+                case "$d" in loop*|ram*|zram*|dm-*) continue ;; esac
+                disks+=("/dev/$d")
+            done
+        fi
+
+        if [ "${#disks[@]}" -eq 0 ]; then
+            die "no block devices found (lsblk saw none under /sys/block either)"
+        fi
 
         local i
         for i in "${!disks[@]}"; do
-            say "  [$((i+1))] ${disks[$i]}"
+            say "  [$((i+1))] ${disks[$i]} $(lsblk -dn -o SIZE,MODEL -- "${disks[$i]}" 2>/dev/null | head -1)"
         done
         say ""
         read -r -p "Target disk number [1]: " n
         n="${n:-1}"
-        DISK="/dev/$(printf '%s' "${disks[$((n-1))]}" | awk '{print $1}')"
+        DISK="${disks[$((n-1))]}"
     fi
 
     [ -b "$DISK" ] || [ "$DRYRUN" = 1 ] || die "not a block device: ${DISK}"
