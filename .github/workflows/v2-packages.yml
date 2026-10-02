@@ -128,6 +128,20 @@ jobs:
           fi
           echo "image=$img" >> "$GITHUB_OUTPUT"
 
+      # The v2 repo (debs + .stamps) is not committed, so without this every run
+      # rebuilds the whole fleet. v2/pkg-build.sh skips a package whose stamp
+      # still matches its upstream commit and our build inputs, and the stamp
+      # records which debs it produced.
+      - name: Restore the v2 package pool
+        uses: actions/cache@v4
+        with:
+          path: |
+            v2/repo/pool/main
+            v2/repo/.stamps
+          key: v2-pool-${{ github.repository_id }}-${{ github.run_id }}
+          restore-keys: |
+            v2-pool-${{ github.repository_id }}-
+
       - name: Build ${{ matrix.package }}
         env:
           PKG_BUILDER_IMAGE: ${{ steps.img.outputs.image }}

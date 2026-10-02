@@ -84,7 +84,7 @@ systemsettings kwin-x11 xserver-xorg xserver-xorg-video-all xserver-xorg-input-a
 # polkit rule, and the GTK4 helper would shadow it.
 export PIKA_PKGS="
 pika-wallpapers sound-theme-pika papirus-colors plymouth-theme-pika
-desktop-base pika-shell-profiles
+desktop-base
 pika-kde-desktop pika-kde-settings plasma-supergfxctl kio-admin
 pika-shell-profile-common pika-shell-profile-otter
 pika-welcome pika-first-setup-gtk4

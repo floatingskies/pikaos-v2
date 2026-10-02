@@ -104,16 +104,65 @@ run_build() {
 
 collect() {
   mkdir -p "$REPO/pool/main"
-  local found=0 f
+  local found=0 f debs=""
   shopt -s nullglob
   for f in "$WORK/$KEY"/output/*.deb "$WORK/$KEY"/*.deb; do
-    cp -f "$f" "$REPO/pool/main/"; echo "  + $(basename "$f")"; found=1
+    cp -f "$f" "$REPO/pool/main/"; echo "  + $(basename "$f")"
+    debs+="$(basename "$f")"$'\n'; found=1
   done
   [ "$found" = 1 ] || { echo "ERROR: $NAME produced no .deb" >&2; exit 1; }
+  save_stamp
+}
+
+# ---------------------------------------------------------------------------
+# Build cache
+#
+# A package is rebuilt only when something that can change its output changed:
+# the upstream commit it was built from, or the build inputs we inject (the v2
+# ISA flags, the dependency shims and the script that applies them). Otherwise
+# the debs already in v2/repo/pool/main are reused, which saves most of the
+# ~15 minutes a full fleet rebuild costs on CI.
+# ---------------------------------------------------------------------------
+fingerprint() {
+  local sha
+  sha="$(git -C "$WORK/$KEY" rev-parse HEAD 2>/dev/null || true)"
+  [ -n "$sha" ] || sha="local-$(find "$WORK/$KEY" -type f -printf '%T@ %s %p\n' 2>/dev/null | sort | sha256sum | cut -d' ' -f1)"
+  printf '%s\n' "$sha"
+  sha256sum "$HERE/build-config/amd64-v2.sh" | cut -d' ' -f1
+  sha256sum "$HERE/ci/dep-shims.tsv" | cut -d' ' -f1
+  sha256sum "$HERE/ci/apply-dep-shims.pl" | cut -d' ' -f1
+}
+
+cache_is_current() {
+  local stamp="$STAMP_DIR/$KEY.stamp"
+  [ -s "$stamp" ] || return 1
+  [ "$(head -4 "$stamp")" = "$FINGERPRINT" ] || return 1
+  local d
+  while read -r d; do
+    [ -z "$d" ] && continue
+    [ -s "$REPO/pool/main/$d" ] || return 1
+  done < <(sed -n '5,$p' "$stamp")
+  return 0
+}
+
+save_stamp() {
+  mkdir -p "$STAMP_DIR"
+  { printf '%s\n' "$FINGERPRINT"; ls -1 "$REPO/pool/main"/*.deb 2>/dev/null | xargs -r -n1 basename; } > "$STAMP_DIR/$KEY.stamp"
 }
 
 build_image
 fetch_source
+
+FINGERPRINT="$(fingerprint)"
+STAMP_DIR="$REPO/.stamps"
+
+if cache_is_current; then
+  log "$NAME is up to date; reusing the cached deb(s):"
+  sed -n '5,$p' "$STAMP_DIR/$KEY.stamp" | sed 's/^/  = /'
+  exit 0
+fi
+log "$NAME needs building"
+
 run_build
 collect
 log "done: $NAME"

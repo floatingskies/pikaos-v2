@@ -221,7 +221,6 @@ cp -f "$ROOTFS_PATH/boot/initrd.img-$ISO_KERNEL" "$GRUB_TMP/EFI/initrd"
 # locates the ISO9660 medium by file, so the kernel is found on either path.
 cp -f "$GRUB_DATA/grub.cfg" "$GRUB_TMP/grub.cfg"
 sed -i "s#THE_NAME_OF_CURRENT_ISO_FOR_VENTOY#$ISO_IMAGE.iso#g" "$GRUB_TMP/grub.cfg"
-sed -i "s#__ISO_LABEL__#$ISO_LABEL#g" "$GRUB_TMP/grub.cfg"
 grub-mkstandalone \
     --format=x86_64-efi \
     --output="$GRUB_TMP/EFI/BOOT/BOOTX64.EFI" \
@@ -285,8 +284,8 @@ xorriso \
     -appended_part_as_gpt \
     -no-pad \
     -no-emul-boot \
-    -append_partition 1 0xef "$EFIBOOT_IMG" \
-    -e EFI/BOOT/BOOTX64.EFI \
+    -append_partition 2 0xef "$EFIBOOT_IMG" \
+    --efi-boot --interval:appended_partition_2:all:: \
     -o "$ISO_OUTPUT" \
     "$LIVE_BOOT_DATA_PATH"
 
