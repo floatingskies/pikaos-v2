@@ -121,6 +121,19 @@ jobs:
           xorriso -indev "$ISO" -report_el_torito plain | tee /tmp/torito.txt
           grep -qiE 'UEFI' /tmp/torito.txt \
             || { echo "::error::ISO has no UEFI El Torito entry"; exit 1; }
+          # Regression guard: the El Torito UEFI entry must be a real file in the
+          # ISO tree with a non-zero load size. Pointing the entry at the
+          # appended partition produced a load size of 0, which boots as
+          # "could not read from cdrom".
+          grep -qE 'El Torito img path *: *1 */EFI/BOOT/BOOTX64\.EFI' /tmp/torito.txt \
+            || { echo "::error::El Torito UEFI entry does not point at /EFI/BOOT/BOOTX64.EFI"; exit 1; }
+          LDSIZ=$(awk '/El Torito boot img/ {print $(NF-1); exit}' /tmp/torito.txt)
+          LBA=$(awk '/El Torito boot img/ {print $NF; exit}' /tmp/torito.txt)
+          if [ -z "$LDSIZ" ] || [ "$LDSIZ" -eq 0 ] 2>/dev/null; then
+            echo "::error::El Torito UEFI entry has a zero load size (image at LBA $LBA)"
+            exit 1
+          fi
+          echo "El Torito UEFI image: load size $LDSIZ sectors at LBA $LBA"
           ESP=iso-v2/build/LIVE_BOOT/efiboot.img
           mtype -i "$ESP" ::/EFI/BOOT/BOOTX64.EFI >/dev/null \
             || { echo "::error::ESP is missing EFI/BOOT/BOOTX64.EFI"; exit 1; }

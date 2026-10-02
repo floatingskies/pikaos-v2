@@ -200,6 +200,13 @@ grub-mkstandalone \
     "boot/grub/vmlinuz=$GRUB_TMP/EFI/vmlinuz" \
     "boot/grub/initrd=$GRUB_TMP/EFI/initrd"
 
+# Boot the ISO9660 copy of BOOTX64.EFI, not the appended partition: with
+# -as mkisofs, "--efi-boot --interval:appended_partition_2:all::" emits an
+# El Torito UEFI entry with a load size of 0, so the firmware has nothing to
+# load ("could not read from cdrom"). A real file in the tree gets a proper
+# load size. The appended ESP is kept so Ventoy/other loaders can boot it.
+install -Dm0644 "$GRUB_TMP/EFI/BOOT/BOOTX64.EFI" "$LIVE_BOOT_DATA_PATH/EFI/BOOT/BOOTX64.EFI"
+
 # Drop the unpacked rootfs before xorriso to save workspace.
 rm -rf "$ROOTFS_PATH"
 
@@ -242,7 +249,7 @@ xorriso \
     -no-pad \
     -no-emul-boot \
     -append_partition 2 0xef "$EFIBOOT_IMG" \
-    --efi-boot --interval:appended_partition_2:all:: \
+    -e EFI/BOOT/BOOTX64.EFI \
     -o "$ISO_OUTPUT" \
     "$LIVE_BOOT_DATA_PATH"
 
