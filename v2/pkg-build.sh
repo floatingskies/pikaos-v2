@@ -59,10 +59,10 @@ fetch_source() {
   # date"). Normalize every trailer timezone in the tree before dh_* reads it.
   while IFS= read -r cl; do
     perl -i -pe '
-      s/ GMT\s*$/ +0000/ if /^ -- /;
-      s/ UTC\s*$/ +0000/ if /^ -- /;
-      s/ ([+-]\d{2}):(\d{2})\s*$/ $1$2/ if /^ -- /;
-      s/ ([+-]\d{2})\s*$/ ${1}00/ if /^ -- /;
+      s/ GMT\s*$/ +0000/ if /^\s*-- /;
+      s/ UTC\s*$/ +0000/ if /^\s*-- /;
+      s/ ([+-]\d{2}):(\d{2})\s*$/ $1$2/ if /^\s*-- /;
+      s/ ([+-]\d{2})\s*$/ ${1}00/ if /^\s*-- /;
     ' "$cl"
   done < <(find "$dst" -path '*/debian/changelog' -type f)
 }

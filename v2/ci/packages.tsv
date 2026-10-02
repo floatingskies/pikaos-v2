@@ -46,7 +46,6 @@ custom-gui-packages/pika-installer-gtk4
 
 # Pika applications / desktop integration (from general-packages)
 general-packages/pikman
-general-packages/falcon
 general-packages/pika-sources
 general-packages/pika-wallpapers
 general-packages/pika-lightdm
@@ -63,18 +62,21 @@ general-packages/dmemcg-booster
 general-packages/apt-btrfs-snapper
 general-packages/ananicy-cpp
 general-packages/ananicy-rules
-general-packages/tuned
 
 # Not buildable against plain Debian sid yet (TODO before enabling):
-#   zig not packaged in sid:        pikainstall, pikafetch, falcond, pika-paste
+#   zig not packaged in sid:        pikainstall, pikafetch, falcond, falcon,
+#     pika-paste (falcon also has a malformed patch in main.sh)
 #   appstream-util removed in sid:  pwvucontrol
+#   debhelper 13 dh_missing fails:  tuned (00-tuned.conf not installed anywhere)
 #   upstream source/control bugs:   pika-pkg-template (placeholder Maintainer),
 #     pikd-pharser-rs (repo ships no main.sh), apx-gui (conflicting Source field)
 # general-packages/pikainstall
 # general-packages/pikafetch
 # general-packages/falcond
+# general-packages/falcon
 # general-packages/pika-paste
 # general-packages/pwvucontrol
+# general-packages/tuned
 # general-packages/pika-pkg-template
 # general-packages/pikd-pharser-rs
 # general-packages/apx-gui
