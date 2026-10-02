@@ -31,8 +31,8 @@ cat > /etc/vconsole.conf <<EOF
 KEYMAP=us
 FONT=Lat2-Terminus16
 EOF
-# booster's vconsole support looks under /usr/share/kbd/consolefonts (Arch
-# layout); Debian ships them in /usr/share/consolefonts.
+# Provide the Arch-style kbd asset locations some tools still look for;
+# Debian ships consolefonts in /usr/share/consolefonts.
 mkdir -p /usr/share/kbd
 [ -e /usr/share/kbd/consolefonts ] || ln -s /usr/share/consolefonts /usr/share/kbd/consolefonts
 [ -e /usr/share/kbd/keymaps ] || { [ -d /usr/share/keymaps ] && ln -s /usr/share/keymaps /usr/share/kbd/keymaps; }
@@ -77,22 +77,18 @@ if command -v NetworkManager >/dev/null 2>&1; then
     systemctl enable NetworkManager.service 2>/dev/null || true
 fi
 
-echo "### live-setup: booster config"
-cat > /etc/booster.yaml <<'EOF'
-# PikaOS-v2 live: UEFI + rEFInd + booster. The Debian kernel keeps
-# squashfs/overlay/iso9660 as modules, so force-include and force-load them
-# for the pika-live-booster-hooks live boot path.
-vconsole: true
-extra_files: busybox
-enable_lvm: false
-universal: false
-enable_hooks: true
-enable_plymouth: false
-modules: loop,squashfs,overlay,iso9660,sr_mod,usb_storage,uas,sd_mod,ahci,nvme,xhci_hcd,ehci_pci,ehci_hcd,uhci_hcd,ohci_hcd,hid_generic,usbhid,ext4,vfat
-modules_force_load: loop,squashfs,overlay,iso9660,sr_mod,usb_storage,uas,sd_mod,ahci,nvme,hid_generic,usbhid
+echo "### live-setup: initramfs-tools modules for live-boot"
+cat > /etc/initramfs-tools/modules <<'EOF'
+# The Debian kernel keeps squashfs/overlay/loop as modules; force them into the
+# live initramfs so live-boot can mount the squashfs and build the overlay.
+squashfs
+overlay
+loop
+iso9660
+sr_mod
 EOF
 
-echo "### live-setup: regenerate initramfs (booster wrapper)"
+echo "### live-setup: regenerate initramfs (live-boot)"
 update-initramfs -c -k all
 
 echo "### live-setup: identity marker"

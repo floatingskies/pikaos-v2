@@ -1,8 +1,8 @@
 #! /bin/bash
 # PikaOS-v2 live ISO pipeline. Runs INSIDE the privileged pika-iso-v2 container
-# with the project root bind-mounted at /build. Method mirrors PikaOS
-# images/live-iso-kde/build.sh (UEFI-only, rEFInd + booster + xorriso), but the
-# rootfs is built from Debian sid plus the local x86-64-v2 PikaOS repo.
+# with the project root bind-mounted at /build. UEFI-only, GRUB2 + Debian
+# live-boot + xorriso, but the rootfs is built from Debian sid plus the local
+# x86-64-v2 PikaOS repo.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,7 +17,7 @@ LIVE_BOOT_DATA_PATH="$LIVE_BOOT_PATH/data"
 LIVE_BOOT_LIVE_PATH="$LIVE_BOOT_DATA_PATH/live"
 ROOTFS_PATH="$LIVE_BOOT_PATH/rootfs"
 EFIBOOT_IMG="$LIVE_BOOT_PATH/efiboot.img"
-REFIND_TMP="$LIVE_BOOT_PATH/refind"
+GRUB_TMP="$LIVE_BOOT_PATH/grub"
 REPO_MNT="/opt/v2repo"
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
@@ -144,9 +144,9 @@ EOF
 install -m 0755 "$HERE/config/live-setup.sh" "$ROOTFS_PATH/root/live-setup.sh"
 chroot "$ROOTFS_PATH" /bin/bash /root/live-setup.sh || die "live-setup failed"
 
-log "resolving kernel + booster image"
+log "resolving kernel + initrd"
 ISO_KERNEL="$(basename "$(ls "$ROOTFS_PATH"/boot/vmlinuz-* | head -1)" | sed 's/^vmlinuz-//')"
-[ -f "$ROOTFS_PATH/boot/booster.img-$ISO_KERNEL" ] || die "booster.img-$ISO_KERNEL not produced"
+[ -f "$ROOTFS_PATH/boot/initrd.img-$ISO_KERNEL" ] || die "initrd.img-$ISO_KERNEL not produced"
 echo "kernel: $ISO_KERNEL"
 
 umount_all
@@ -169,27 +169,36 @@ mksquashfs \
 printf '%s\n' zstd > "$LIVE_BOOT_LIVE_PATH/.comp"
 
 # ---------------------------------------------------------------------------
-# 4. assemble the rEFInd ESP (kernel + booster.img live on the FAT partition)
+# 4. assemble the GRUB2 ESP (GRUB EFI + kernel + initrd on the FAT partition)
 # ---------------------------------------------------------------------------
-log "building rEFInd ESP"
-rm -rf "$REFIND_TMP"
-cp -a "$REFIND_DATA" "$REFIND_TMP"
-cp -f "$ROOTFS_PATH/boot/vmlinuz-$ISO_KERNEL" "$REFIND_TMP/EFI/vmlinuz"
-cp -f "$ROOTFS_PATH/boot/booster.img-$ISO_KERNEL" "$REFIND_TMP/EFI/initrd"
+log "building GRUB2 ESP"
+rm -rf "$GRUB_TMP"
+mkdir -p "$GRUB_TMP/EFI/BOOT"
+cp -f "$ROOTFS_PATH/boot/vmlinuz-$ISO_KERNEL"    "$GRUB_TMP/EFI/vmlinuz"
+cp -f "$ROOTFS_PATH/boot/initrd.img-$ISO_KERNEL" "$GRUB_TMP/EFI/initrd"
+
+# Render grub.cfg and embed it inside a standalone EFI binary, so the ESP needs
+# no separate config file: grub-mkstandalone places it at boot/grub/grub.cfg.
+cp -f "$GRUB_DATA/grub.cfg" "$GRUB_TMP/grub.cfg"
+sed -i "s#THE_NAME_OF_CURRENT_ISO_FOR_VENTOY#$ISO_IMAGE.iso#g" "$GRUB_TMP/grub.cfg"
+grub-mkstandalone \
+    --format=x86_64-efi \
+    --output="$GRUB_TMP/EFI/BOOT/BOOTX64.EFI" \
+    --modules="part_gpt part_msdos fat exfat ntfs linux normal iso9660 search search_label search_fs_uuid all_video gfxterm gfxmenu font videoinfo echo test configfile serial terminfo" \
+    --locales="" \
+    --themes="" \
+    "boot/grub/grub.cfg=$GRUB_TMP/grub.cfg"
 
 # Drop the unpacked rootfs before xorriso to save workspace.
 rm -rf "$ROOTFS_PATH"
 
-sed -i "s#THE_NAME_OF_CURRENT_ISO_FOR_VENTOY#$ISO_IMAGE.iso#g" "$REFIND_TMP/refind_linux.conf" "$REFIND_TMP/EFI/boot/refind.conf"
-sed -i "s#THE_LABEL_OF_CURRENT_ID#$ISO_LABEL#g"               "$REFIND_TMP/refind_linux.conf" "$REFIND_TMP/EFI/boot/refind.conf"
-
-EFI_BOOT_IMAGE_SIZE=$(( $(du -s -B1048576 "$REFIND_TMP" | cut -f1) + 10 ))
+EFI_BOOT_IMAGE_SIZE=$(( $(du -s -B1048576 "$GRUB_TMP" | cut -f1) + 10 ))
 rm -f "$EFIBOOT_IMG"
 dd if=/dev/zero of="$EFIBOOT_IMG" bs=1M count="$EFI_BOOT_IMAGE_SIZE" status=none
 mkfs.vfat -F 32 "$EFIBOOT_IMG" >/dev/null
 
 (
-    cd "$REFIND_TMP"
+    cd "$GRUB_TMP"
     while IFS= read -r -d '' d; do
         mmd -i "$EFIBOOT_IMG" "::$(printf '%s' "$d" | tr '[:lower:]' '[:upper:]')"
     done < <(find EFI -type d -print0 | sort -z)

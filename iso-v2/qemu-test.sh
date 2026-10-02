@@ -3,8 +3,8 @@
 #
 #   ./iso-v2/qemu-test.sh [iso] [timeout_seconds]
 #
-# The live cmdline includes console=ttyS0 (see data/refind/EFI/boot/refind.conf),
-# so the kernel, booster and the PikaOS live hook all log over serial.
+# The live cmdline includes console=ttyS0 (see data/grub/grub.cfg), so GRUB,
+# the kernel and live-boot all log over serial.
 set -euo pipefail
 
 ISO="${1:-$(ls -1 "$(dirname "${BASH_SOURCE[0]}")"/build/output/*.iso 2>/dev/null | head -1)}"

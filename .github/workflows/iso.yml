@@ -111,7 +111,7 @@ jobs:
           ISO_BUILDER_PULL: ${{ inputs.pull && '1' || '0' }}
         run: ./iso-v2/make-iso.sh '${{ matrix.recipe }}'
 
-      - name: Assert the ISO UEFI boot equipment
+      - name: Assert the ISO GRUB2 UEFI boot equipment
         run: |
           set -euo pipefail
           sudo apt-get update -qq
@@ -121,9 +121,16 @@ jobs:
           xorriso -indev "$ISO" -report_el_torito plain | tee /tmp/torito.txt
           grep -qiE 'UEFI' /tmp/torito.txt \
             || { echo "::error::ISO has no UEFI El Torito entry"; exit 1; }
-          mdir -i iso-v2/build/LIVE_BOOT/efiboot.img ::/EFI/BOOT/BOOTX64.EFI >/dev/null \
+          ESP=iso-v2/build/LIVE_BOOT/efiboot.img
+          mtype -i "$ESP" ::/EFI/BOOT/BOOTX64.EFI >/dev/null \
             || { echo "::error::ESP is missing EFI/BOOT/BOOTX64.EFI"; exit 1; }
-          echo "UEFI boot equipment present"
+          mtype -i "$ESP" ::/EFI/VMLINUZ >/dev/null \
+            || { echo "::error::ESP is missing the kernel"; exit 1; }
+          mtype -i "$ESP" ::/EFI/INITRD >/dev/null \
+            || { echo "::error::ESP is missing the initrd"; exit 1; }
+          mtype -i "$ESP" ::/EFI/BOOT/BOOTX64.EFI | grep -aqi 'GRUB' \
+            || { echo "::error::BOOTX64.EFI is not a GRUB image"; exit 1; }
+          echo "GRUB2 UEFI boot equipment present"
 
       - name: Upload the ISO
         uses: actions/upload-artifact@v4
@@ -135,9 +142,9 @@ jobs:
           if-no-files-found: error
           retention-days: 5
 
-  # Non-blocking: the live boot is still being stabilised (booster drops to its
-  # emergency shell). This records the serial log for every run and only fails
-  # the *step*, never the workflow.
+  # Non-blocking: the live boot is still being stabilised (GRUB2 + live-boot).
+  # This records the serial log for every run and only fails the *step*, never
+  # the workflow.
   boot-smoke:
     needs: build
     runs-on: ubuntu-latest
@@ -178,7 +185,7 @@ jobs:
             -serial file:/tmp/serial.log -display none -no-reboot || true
           echo "---- serial tail ----"
           tail -40 /tmp/serial.log || true
-          if grep -qiE 'PikaOS Booster Live Hook|reached target|login:|refind' /tmp/serial.log; then
+          if grep -qiE 'Linux version|live-boot|reached target|login:|GRUB' /tmp/serial.log; then
             echo "boot marker found"
           else
             echo "::warning::no live-session marker in the serial log (boot still being stabilised)"

@@ -15,6 +15,8 @@ RUN rm -f /etc/apt/sources.list.d/debian.sources \
       xorriso \
       mtools \
       dosfstools \
+      grub-common \
+      grub-efi-amd64-bin \
       squashfs-tools \
       ca-certificates \
       zstd lz4 xz-utils \

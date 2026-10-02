@@ -1,7 +1,9 @@
 #! /bin/bash
-# Rebuild only the rEFInd ESP + ISO from an existing LIVE_BOOT tree, reusing
-# data/live/filesystem.squashfs and refind/. Fast iteration replacement for a
-# full inner-build.sh run. Run as root (the tree is root-owned).
+# Rebuild only the GRUB2 ESP + ISO from an existing LIVE_BOOT tree, reusing
+# data/live/filesystem.squashfs and grub/. Fast iteration replacement for a
+# full inner-build.sh run. Run as root (the tree is root-owned) and with
+# grub-mkstandalone available (inside pika-iso-v2, or the host with
+# grub-efi-amd64-bin).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,27 +13,35 @@ ROOT="$(cd "$HERE/.." && pwd)"
 
 LIVE_BOOT_PATH="$BUILD/LIVE_BOOT"
 LIVE_BOOT_DATA_PATH="$LIVE_BOOT_PATH/data"
-REFIND_TMP="$LIVE_BOOT_PATH/refind"
+GRUB_TMP="$LIVE_BOOT_PATH/grub"
 EFIBOOT_IMG="$LIVE_BOOT_PATH/efiboot.img"
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
 [ -s "$LIVE_BOOT_DATA_PATH/live/filesystem.squashfs" ] || { echo "no squashfs" >&2; exit 1; }
-[ -d "$REFIND_TMP/EFI" ] || { echo "no refind tree" >&2; exit 1; }
-[ -f "$REFIND_TMP/EFI/vmlinuz" ] || { echo "no kernel in refind tree" >&2; exit 1; }
-[ -f "$REFIND_TMP/EFI/initrd" ] || { echo "no initrd in refind tree" >&2; exit 1; }
+[ -d "$GRUB_TMP/EFI" ] || { echo "no grub tree" >&2; exit 1; }
+[ -f "$GRUB_TMP/EFI/vmlinuz" ] || { echo "no kernel in grub tree" >&2; exit 1; }
+[ -f "$GRUB_TMP/EFI/initrd" ] || { echo "no initrd in grub tree" >&2; exit 1; }
+command -v grub-mkstandalone >/dev/null || { echo "grub-mkstandalone not found" >&2; exit 1; }
 
-log "rebuilding rEFInd ESP"
-sed -i "s#THE_NAME_OF_CURRENT_ISO_FOR_VENTOY#$ISO_IMAGE.iso#g" "$REFIND_TMP/refind_linux.conf" "$REFIND_TMP/EFI/boot/refind.conf"
-sed -i "s#THE_LABEL_OF_CURRENT_ID#$ISO_LABEL#g"               "$REFIND_TMP/refind_linux.conf" "$REFIND_TMP/EFI/boot/refind.conf"
+log "rebuilding GRUB2 ESP"
+cp -f "$GRUB_DATA/grub.cfg" "$GRUB_TMP/grub.cfg"
+sed -i "s#THE_NAME_OF_CURRENT_ISO_FOR_VENTOY#$ISO_IMAGE.iso#g" "$GRUB_TMP/grub.cfg"
+grub-mkstandalone \
+    --format=x86_64-efi \
+    --output="$GRUB_TMP/EFI/BOOT/BOOTX64.EFI" \
+    --modules="part_gpt part_msdos fat exfat ntfs linux normal iso9660 search search_label search_fs_uuid all_video gfxterm gfxmenu font videoinfo echo test configfile serial terminfo" \
+    --locales="" \
+    --themes="" \
+    "boot/grub/grub.cfg=$GRUB_TMP/grub.cfg"
 
-EFI_BOOT_IMAGE_SIZE=$(( $(du -s -B1048576 "$REFIND_TMP" | cut -f1) + 10 ))
+EFI_BOOT_IMAGE_SIZE=$(( $(du -s -B1048576 "$GRUB_TMP" | cut -f1) + 10 ))
 rm -f "$EFIBOOT_IMG"
 dd if=/dev/zero of="$EFIBOOT_IMG" bs=1M count="$EFI_BOOT_IMAGE_SIZE" status=none
 mkfs.vfat -F 32 "$EFIBOOT_IMG" >/dev/null
 
 (
-    cd "$REFIND_TMP"
+    cd "$GRUB_TMP"
     while IFS= read -r -d '' d; do
         mmd -i "$EFIBOOT_IMG" "::$(printf '%s' "$d" | tr '[:lower:]' '[:upper:]')"
     done < <(find EFI -type d -print0 | sort -z)

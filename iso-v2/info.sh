@@ -2,9 +2,9 @@
 # Common variables for the PikaOS-v2 live ISO build.
 #
 # Method adapted from PikaOS images/live-iso-kde (git.pika-os.com):
-#   UEFI-only, rEFInd boot menu, booster initramfs with pika-live-booster-hooks,
-#   mksquashfs zstd-22, xorriso appended GPT EFI partition.
-# Difference: the rootfs is Debian sid (x86-64 baseline) plus PikaOS components
+#   UEFI-only, mksquashfs zstd-22, xorriso appended GPT EFI partition.
+# Difference: the live rootfs boots via GRUB2 + Debian live-boot (instead of
+# rEFInd + booster), and is Debian sid (x86-64 baseline) plus PikaOS components
 # rebuilt for x86-64-v2 (see ../v2), instead of the v3 PikaOS nest image.
 
 HERE="${HERE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
@@ -29,7 +29,7 @@ export ROOTFS="$BUILD/rootfs"
 export LIVE_PATH="$BUILD/live"
 export EFIBOOT_IMG="$BUILD/efiboot.img"
 export V2_REPO="$ROOT/v2/repo"
-export REFIND_DATA="$HERE/data/refind"
+export GRUB_DATA="$HERE/data/grub"
 export OUTPUT="$BUILD/output"
 
 # Kernel shipped on the ESP, resolved after the rootfs is built.
@@ -50,7 +50,7 @@ linux-image-amd64
 initramfs-tools
 busybox
 lvm2 libdevmapper1.02.1 libdevmapper-event1.02.1 binutils console-data lz4
-booster pika-live-booster-hooks
+live-boot live-boot-initramfs-tools
 "
 
 export FIRMWARE_PKGS="
@@ -79,5 +79,5 @@ pkexec polkitd zenity
 
 # Packages for the on-ISO pool (installer may need them without network).
 export POOL_PKGS="
-efibootmgr refind grub-efi-amd64-bin
+efibootmgr grub-efi-amd64-bin
 "
