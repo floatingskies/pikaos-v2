@@ -184,22 +184,28 @@ mkdir -p "$GRUB_TMP/EFI/BOOT"
 cp -f "$ROOTFS_PATH/boot/vmlinuz-$ISO_KERNEL"    "$GRUB_TMP/EFI/vmlinuz"
 cp -f "$ROOTFS_PATH/boot/initrd.img-$ISO_KERNEL" "$GRUB_TMP/EFI/initrd"
 
-# Render grub.cfg and embed it inside a standalone EFI binary, so the ESP needs
-# no separate config file: grub-mkstandalone places it at boot/grub/grub.cfg.
+# Render grub.cfg and embed it, the kernel and the initrd inside a standalone
+# EFI binary: grub-mkstandalone places them in the image's memdisk and boots
+# $prefix/grub.cfg. Loading the kernel from $prefix avoids depending on GRUB
+# having found the appended FAT partition as its root (it does not always).
 cp -f "$GRUB_DATA/grub.cfg" "$GRUB_TMP/grub.cfg"
 sed -i "s#THE_NAME_OF_CURRENT_ISO_FOR_VENTOY#$ISO_IMAGE.iso#g" "$GRUB_TMP/grub.cfg"
 grub-mkstandalone \
     --format=x86_64-efi \
     --output="$GRUB_TMP/EFI/BOOT/BOOTX64.EFI" \
-    --modules="part_gpt part_msdos fat exfat ntfs linux normal iso9660 search search_label search_fs_uuid all_video gfxterm gfxmenu font videoinfo echo test configfile serial terminfo" \
+    --modules="part_gpt part_msdos fat exfat ntfs linux normal iso9660 search search_label search_fs_uuid search_fs_file all_video gfxterm gfxmenu font videoinfo echo test configfile serial terminfo" \
     --locales="" \
     --themes="" \
-    "boot/grub/grub.cfg=$GRUB_TMP/grub.cfg"
+    "boot/grub/grub.cfg=$GRUB_TMP/grub.cfg" \
+    "boot/grub/vmlinuz=$GRUB_TMP/EFI/vmlinuz" \
+    "boot/grub/initrd=$GRUB_TMP/EFI/initrd"
 
 # Drop the unpacked rootfs before xorriso to save workspace.
 rm -rf "$ROOTFS_PATH"
 
-EFI_BOOT_IMAGE_SIZE=$(( $(du -s -B1048576 "$GRUB_TMP" | cut -f1) + 10 ))
+# +64 MiB margin: BOOTX64.EFI now embeds the kernel+initrd (memdisk), and
+# mkfs.vfat/mcopy need slack for FAT32 allocation overhead.
+EFI_BOOT_IMAGE_SIZE=$(( $(du -s -B1048576 "$GRUB_TMP" | cut -f1) + 64 ))
 rm -f "$EFIBOOT_IMG"
 dd if=/dev/zero of="$EFIBOOT_IMG" bs=1M count="$EFI_BOOT_IMAGE_SIZE" status=none
 mkfs.vfat -F 32 "$EFIBOOT_IMG" >/dev/null
