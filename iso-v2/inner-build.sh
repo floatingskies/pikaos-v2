@@ -184,10 +184,12 @@ mkdir -p "$GRUB_TMP/EFI/BOOT"
 cp -f "$ROOTFS_PATH/boot/vmlinuz-$ISO_KERNEL"    "$GRUB_TMP/EFI/vmlinuz"
 cp -f "$ROOTFS_PATH/boot/initrd.img-$ISO_KERNEL" "$GRUB_TMP/EFI/initrd"
 
-# Render grub.cfg and embed it, the kernel and the initrd inside a standalone
-# EFI binary: grub-mkstandalone places them in the image's memdisk and boots
-# $prefix/grub.cfg. Loading the kernel from $prefix avoids depending on GRUB
-# having found the appended FAT partition as its root (it does not always).
+# Render grub.cfg and embed it inside a standalone EFI binary, so the ESP needs
+# no separate config file: grub-mkstandalone places it at boot/grub/grub.cfg.
+# Only grub.cfg goes in the memdisk: kernel and initrd stay as real files in the
+# ISO tree. A standalone image carrying the kernel too would exceed the 65535
+# block El Torito limit (65535 * 512 = 32 MiB), and xorriso then records a load
+# size of 0, which the firmware refuses ("could not read from cdrom").
 cp -f "$GRUB_DATA/grub.cfg" "$GRUB_TMP/grub.cfg"
 sed -i "s#THE_NAME_OF_CURRENT_ISO_FOR_VENTOY#$ISO_IMAGE.iso#g" "$GRUB_TMP/grub.cfg"
 grub-mkstandalone \
@@ -196,9 +198,14 @@ grub-mkstandalone \
     --modules="part_gpt part_msdos fat exfat ntfs linux normal iso9660 search search_label search_fs_uuid search_fs_file all_video gfxterm gfxmenu font videoinfo echo test configfile serial terminfo" \
     --locales="" \
     --themes="" \
-    "boot/grub/grub.cfg=$GRUB_TMP/grub.cfg" \
-    "boot/grub/vmlinuz=$GRUB_TMP/EFI/vmlinuz" \
-    "boot/grub/initrd=$GRUB_TMP/EFI/initrd"
+    "boot/grub/grub.cfg=$GRUB_TMP/grub.cfg"
+
+# Kernel and initrd as ordinary files in the ISO tree, which is what GRUB's root
+# is when it boots the El Torito image out of this medium (the Debian live
+# layout). The copies under EFI/ stay for loaders that boot the kernel
+# themselves, such as Ventoy.
+install -Dm0644 "$ROOTFS_PATH/boot/vmlinuz-$ISO_KERNEL"    "$LIVE_BOOT_DATA_PATH/boot/vmlinuz"
+install -Dm0644 "$ROOTFS_PATH/boot/initrd.img-$ISO_KERNEL" "$LIVE_BOOT_DATA_PATH/boot/initrd.img"
 
 # Boot the ISO9660 copy of BOOTX64.EFI, not the appended partition: with
 # -as mkisofs, "--efi-boot --interval:appended_partition_2:all::" emits an
