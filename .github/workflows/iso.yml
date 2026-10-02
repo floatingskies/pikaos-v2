@@ -149,13 +149,17 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        recipe: ${{ fromJSON(inputs.recipe == 'minimal' && '["minimal"]' || inputs.recipe == 'full' && '["full"]' || '["minimal","full"]') }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download the minimal ISO
+      - name: Download the ${{ matrix.recipe }} ISO
         uses: actions/download-artifact@v4
         with:
-          name: pikaosv2-minimal-iso
+          name: pikaosv2-${{ matrix.recipe }}-iso
           path: iso
 
       - name: Install QEMU + OVMF
@@ -177,18 +181,20 @@ jobs:
             [ -f "$v" ] && { cp "$v" /tmp/OVMF_VARS.fd; VARS=/tmp/OVMF_VARS.fd; break; }
           done
           [ -n "$CODE" ] && [ -n "$VARS" ] || { echo "::warning::OVMF not found"; exit 0; }
-          timeout 300 qemu-system-x86_64 \
-            -machine q35,accel=tcg -m 2048 -smp 2 \
+          timeout 600 qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 3072 -smp 2 \
             -drive if=pflash,format=raw,readonly=on,file="$CODE" \
             -drive if=pflash,format=raw,file="$VARS" \
             -cdrom "$ISO" -boot d \
             -serial file:/tmp/serial.log -display none -no-reboot || true
           echo "---- serial tail ----"
           tail -40 /tmp/serial.log || true
-          if grep -qiE 'Linux version|live-boot|reached target|login:|GRUB' /tmp/serial.log; then
-            echo "boot marker found"
+          if grep -qiE 'Linux version|systemd\[1\]|live-boot|reached target|login:' /tmp/serial.log; then
+            echo "live-session marker found"
+          elif grep -qi 'GNU GRUB' /tmp/serial.log; then
+            echo "::warning::GRUB loaded but the live session did not start within the timeout"
           else
-            echo "::warning::no live-session marker in the serial log (boot still being stabilised)"
+            echo "::warning::neither GRUB nor a live-session marker in the serial log"
           fi
 
       - name: Upload the serial log
