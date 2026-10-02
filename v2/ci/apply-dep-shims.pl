@@ -36,6 +36,26 @@ my $field_re = join '|', @FIELDS;
 
 my $dropped = 0;
 
+# Debian removed the linux-any wildcard from binary package stanzas, but several
+# PikaOS packages still declare it and dpkg-source refuses to build them
+# ("'...' is not a valid architecture string"). Normalise the Architecture field
+# of every stanza to a value dpkg accepts.
+my %VALID_ARCH = map { $_ => 1 } qw(
+    all any source
+    amd64 i386 arm64 armel ppc64el riscv64 s390x mips64el kfreebsd-amd64
+);
+sub normalise_arch {
+    my ($value) = @_;
+    $value =~ s/\s+//g;
+    my @keep;
+    for my $a (split /,/, $value) {
+        next unless length $a;
+        next if $a eq 'linux-any';          # dropped upstream
+        push @keep, $a if $VALID_ARCH{$a};
+    }
+    return @keep ? join(',', @keep) : 'all';
+}
+
 for my $file (@files) {
     open my $in, '<', $file or die "$file: $!\n";
     my @out;
@@ -43,6 +63,13 @@ for my $file (@files) {
 
     while (defined(my $line = defined $pending ? do { (my $p = $pending) =~ s/\z//; $pending = undef; $p } : <$in>)) {
         $pending = undef;
+        if ($line =~ /^Architecture\s*:\s*(.*)$/) {
+            my $orig = $1;
+            my $arch = normalise_arch($orig);
+            print STDERR "dep-shims: $file: Architecture '$orig' -> '$arch'\n";
+            push @out, "Architecture: $arch\n";
+            next;
+        }
         if ($line =~ /^(?:$field_re)\s*:\s*(.*)$/s) {
             my ($field, $rest) = ($&, $1);
             $field =~ s/\s*:.*//s;
