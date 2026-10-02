@@ -1,0 +1,31 @@
+Source: pikman
+Section: admin
+Priority: optional
+Maintainer: PikaOS v2 <dev@localhost>
+Rules-Requires-Root: no
+Build-Depends:
+ debhelper-compat (= 13), golang-go
+Standards-Version: 4.6.1
+Homepage: https://github.com/floatingskies/pikaos-v2
+
+Package: pikman
+Essential: yes
+Architecture: amd64
+Depends: ${misc:Depends},
+         ${shlibs:Depends},
+         flatpak,
+         apt-utils,
+         ca-certificates,
+         curl,
+         podman,
+         uidmap,
+         slirp4netns,
+         fuse-overlayfs,
+         iptables,
+Description: One package manager to rule them all
+ PikaOS v2 package manager. Supports APT and Flatpak natively, plus Arch,
+ Fedora, Alpine and podman-based containers (pikman enter), without depending
+ on any PikaOS upstream repository.
+ .
+ This build is compiled for x86-64-v2 (GOAMD64=v2) so it runs on Sandy and
+ Ivy Bridge hardware such as the Core i5-3550.

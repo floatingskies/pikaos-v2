@@ -1,0 +1,141 @@
+pika-welcome (4.10-1pika3) pikauwu; urgency=low
+
+  * update to new release
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (4.8-99pika4-lunar) lunar; urgency=low
+
+  * Switch to pika-drivers
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (4.8-99pika2-lunar) lunar; urgency=low
+
+  * Add libadw style adaptiveness
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (4.7-99pika1-lunar) lunar; urgency=low
+
+  * Fix widths
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (4.6-99pika1-lunar) lunar; urgency=low
+
+  * Fix widths
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (4.5-99pika1-lunar) lunar; urgency=low
+
+  * Fix terminal opening
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (4.0-99pika1-lunar) lunar; urgency=low
+
+  * Tunr into PikaOS hub
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (3.1-99pika1) kinetic; urgency=low
+
+  * Fix for smaller window sizes
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+
+pika-welcome (3.0-99pika4) kinetic; urgency=low
+
+  * Add new credits
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+
+pika-welcome (2.0-99pika18) kinetic; urgency=low
+
+  * Add new entries and credits
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (2.0-99pika16) kinetic; urgency=low
+
+  * Chiki miki
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (2.0-99pika15) kinetic; urgency=low
+
+  * Some fixes
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (2.0-99pika14) kinetic; urgency=low
+
+  * Redesign the credits page
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (2.0-99pika13) kinetic; urgency=low
+
+  * Merge Ferreo commit
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (2.0-99pika12) kinetic; urgency=low
+
+  * Add Credits Page
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (2.0-99pika11) kinetic; urgency=low
+
+  * Fix liveiso username
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+
+pika-welcome (2.0-99pika10) kinetic; urgency=low
+
+  * Add new entries
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+
+pika-welcome (1.0-99pika9) kinetic; urgency=low
+
+  * Fix more bugs
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (1.0-99pika8) kinetic; urgency=low
+
+  * Fix bugs
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (1.0-99pika7) kinetic; urgency=low
+
+  * Fix depends
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (1.0-99pika5) kinetic; urgency=low
+
+  * Fix bugs
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (1.0-99pika3) kinetic; urgency=low
+
+  * Add post scripts
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+pika-welcome (1.0-99pika2) kinetic; urgency=low
+
+  * Initial Creation
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200

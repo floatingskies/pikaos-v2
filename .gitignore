@@ -1,0 +1,22 @@
+# Build artefacts. Everything under out/ is generated and can be tens of GB.
+out/
+
+# Scratch / ad-hoc test scripts (not part of the distribution)
+probe.sh
+checkmods.sh
+isotest.sh
+testinstall.sh
+kdesquash.sh
+gnomesquash.sh
+fixowner.sh
+boottest.sh
+pkgcheck.sh
+screen.ppm
+
+# Vendored upstream components keep their own .git history out of ours
+upstream/**/.git
+
+# Editor / OS noise
+*.swp
+*~
+.DS_Store

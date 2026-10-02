@@ -1,0 +1,6 @@
+#!/bin/sh
+
+set -e
+
+gdm-generate-alternatives Jasper-Yellow-Dark /usr/share/backgrounds/gdm-wallpaper-blurred.png
+

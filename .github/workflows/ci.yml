@@ -1,0 +1,286 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Fast checks. These run on every push and must stay under a few minutes:
+  # they never build a full ISO (the rootfs alone is ~7G, more than the
+  # ephemeral runner disk). Full image builds are done locally with ./build.sh.
+  # ---------------------------------------------------------------------
+  kernel-config:
+    name: kernel config sanity (x86-64-v2 target)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify kernel fragment applies and keeps Ivy Bridge drivers
+        run: |
+          set -euo pipefail
+          # Fetch the same kernel source the build uses.
+          KVER=$(grep -oE 'KERNEL_VER="[^"]+"' config/pika.conf | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          echo "kernel version: $KVER"
+          mkdir -p /tmp/ksrc
+          cd /tmp/ksrc
+          wget -q "http://deb.debian.org/debian/pool/main/l/linux/linux_${KVER}.orig.tar.xz" \
+            || wget -q "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${KVER}.tar.xz"
+          tar xf linux_*.tar.xz --strip-components=1
+
+          # ORDER MATTERS: base config first, our fragment last.
+          make -s x86_64_defconfig
+          ./scripts/kconfig/merge_config.sh -m -O . .config /build/config/kernel/pika-v2.fragment >/dev/null 2>&1 \
+            || ./scripts/kconfig/merge_config.sh -m -O . .config "$GITHUB_WORKSPACE/config/kernel/pika-v2.fragment" >/dev/null
+          make -s olddefconfig
+
+          # Every symbol below must be enabled or the image has no
+          # graphics / audio / network / suspend on the target hardware.
+          missing=""
+          for sym in CONFIG_DRM_I915 CONFIG_SND_HDA_INTEL CONFIG_E1000E \
+                     CONFIG_AGP_INTEL CONFIG_ATA_PIIX CONFIG_BTRFS_FS \
+                     CONFIG_BLK_DEV_NVME CONFIG_BT_HCIBTUSB CONFIG_OVERLAY_FS \
+                     CONFIG_MODULES; do
+            grep -q "^${sym}=y" .config || missing="${missing} ${sym}"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::kernel fragment dropped:${missing}"
+            exit 1
+          fi
+          echo "all Ivy Bridge drivers present in .config"
+
+      - name: Assert no above-v2 ISA in the kernel fragment
+        run: |
+          set -euo pipefail
+          # The fragment must never ask for AVX2/FMA/BMI: Ivy Bridge would
+          # SIGILL. Comments explaining WHY we avoid them are fine, so only
+          # uncommented lines are considered.
+          if grep -vE '^[[:space:]]*#' config/kernel/pika-v2.fragment \
+             | grep -nE 'X86_64_V3|mavx2|mfma|x86-64-v3'; then
+            echo "::error::v3/AVX2 flags found; the target is x86-64-v2 only"
+            exit 1
+          fi
+          echo "no v3/AVX2 flags in the v2 kernel fragment"
+
+  v2-build-config:
+    name: v2 build-config is v2 (not v3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the -march level used for every component
+        run: |
+          set -euo pipefail
+          # config/build-config/amd64-v2.sh must target x86-64-v2 and v2's
+          # GOAMD64 level. It is the port of upstream amd64-v3.sh.
+          # Strip comments first: the file explains the v3 origin in prose.
+          live() { grep -vE '^[[:space:]]*#' "$1" || true; }
+
+          live config/build-config/amd64-v2.sh | grep -q 'march=x86-64-v2' \
+            || { echo "::error::amd64-v2.sh does not target x86-64-v2"; exit 1; }
+          live config/build-config/amd64-v2.sh | grep -q 'GOAMD64="v2"' \
+            || { echo "::error::amd64-v2.sh does not set GOAMD64=v2"; exit 1; }
+
+          if live config/build-config/amd64-v2.sh | grep -q 'x86-64-v3'; then
+            echo "::error::v3 leaked into the v2 build config"
+            exit 1
+          fi
+          echo "v2 build config OK"
+
+  hermetic-pikman:
+    name: pikman builds offline (no upstream repo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Build pikman with GOPROXY=off (deps must be vendored)
+        run: |
+          set -euo pipefail
+          cd upstream/pikman
+          test -d vendor || { echo "::error::vendor/ missing; pikman is not hermetic"; exit 1; }
+          GOFLAGS=-mod=vendor GOPROXY=off GOAMD64=v2 \
+            go build -ldflags="-s -w" -o /tmp/pikman -buildvcs=false
+          ls -lh /tmp/pikman
+
+      - name: Confirm pikman is not above x86-64-v2
+        run: |
+          set -euo pipefail
+          # objdump the built binary and fail if any v3+ instruction is present.
+          sudo apt-get update -qq && sudo apt-get install -y -qq binutils >/dev/null
+          if objdump -d /tmp/pikman | grep -qE '\b(vpaddd|vpbroadcastq|andn|bextr|shlx|lzcnt|vmovdqu64)\b'; then
+            echo "::error::pikman contains above-v2 instructions"
+            exit 1
+          fi
+          echo "pikman ISA is within v2"
+
+  cpu-level-detector:
+    name: CPU level detector is correct for v1/v2/v3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detects v3 on a Haswell cpuinfo
+        run: |
+          set -euo pipefail
+          cat > /tmp/haswell <<'EOF'
+          model name	: Intel(R) Core(TM) i7-4770 CPU @ 3.40GHz
+          vendor_id	: GenuineIntel
+          flags		: fpu vme de pse tsc pni pclmulqdq ssse3 cx16 sse4_1 sse4_2 popcnt aes xsave avx f16c pni rdrand lahf_lm bmi1 avx2 bmi2 movbe fma xsaveopt arat
+          EOF
+          sed "s|/proc/cpuinfo|/tmp/haswell|g" config/pika-cpuidetect > /tmp/det
+          chmod +x /tmp/det
+          out=$(/tmp/det)
+          echo "$out"
+          grep -q '^level=v3$' <<<"$out" || { echo "::error::Haswell must be detected as v3"; exit 1; }
+
+      - name: Detects v2 on an Ivy Bridge cpuinfo (the target machine)
+        run: |
+          set -euo pipefail
+          cat > /tmp/ivy <<'EOF'
+          model name	: Intel(R) Core(TM) i5-3550 CPU @ 3.30GHz
+          vendor_id	: GenuineIntel
+          flags		: fpu vme de pse tsc msr pae mce cx8 apic pni ssse3 cx16 sse4_1 sse4_2 popcnt xsave avx f16c pni lahf_lm movbe
+          EOF
+          sed "s|/proc/cpuinfo|/tmp/ivy|g" config/pika-cpuidetect > /tmp/det
+          chmod +x /tmp/det
+          out=$(/tmp/det)
+          echo "$out"
+          grep -q '^level=v2$' <<<"$out" || { echo "::error::Ivy Bridge must be v2, not v3"; exit 1; }
+          grep -q '^v3_ok=0$' <<<"$out" || { echo "::error::Ivy Bridge must not claim v3"; exit 1; }
+          # The missing set must name the exact features Ivy Bridge lacks.
+          for f in avx2 bmi1 bmi2 fma; do
+            grep -q "$f" <<<"$out" || { echo "::error::missing_v3 should list $f"; exit 1; }
+          done
+
+      - name: Detects v1 on a pre-Nehalem cpuinfo
+        run: |
+          set -euo pipefail
+          cat > /tmp/old <<'EOF'
+          model name	: Intel(R) Pentium(R) 4 CPU 3.00GHz
+          vendor_id	: GenuineIntel
+          flags		: fpu vme de pse tsc msr pae mce cx8 apic mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx lm
+          EOF
+          sed "s|/proc/cpuinfo|/tmp/old|g" config/pika-cpuidetect > /tmp/det
+          chmod +x /tmp/det
+          out=$(/tmp/det)
+          echo "$out"
+          grep -q '^level=v1$' <<<"$out" || { echo "::error::pre-Nehalem must be v1"; exit 1; }
+
+  installer-uses-grub:
+    name: installer uses GRUB and never rEFInd
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert GRUB boot paths and the absence of rEFInd
+        run: |
+          set -euo pipefail
+          # The installer must drive grub-install for both firmware modes.
+          grep -q 'target=x86_64-efi' config/pika-install || { echo "::error::no UEFI grub path"; exit 1; }
+          grep -q 'target=i386-pc'  config/pika-install || { echo "::error::no BIOS grub path"; exit 1; }
+          grep -q 'grub-install' config/pika-install || { echo "::error::grub-install not called"; exit 1; }
+          grep -q '/sys/firmware/efi' config/pika-install || { echo "::error::no firmware detection"; exit 1; }
+          # And rEFInd must not creep back in: no line may actually install it.
+          # Mentions in comments, in the purge path, or inside a user-facing
+          # message string are all fine.
+          if grep -inE 'refind' config/pika-install stages/*.sh \
+             | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+             | grep -viE 'purge|remove|say |printf' \
+             | grep -iE 'apt-get|apt install|install |cp |ln -s'; then
+            echo "::error::rEFInd is being installed somewhere"
+            exit 1
+          fi
+          echo "GRUB-only bootloader confirmed"
+
+      - name: Installer must run the CPU gate before partitioning
+        run: |
+          set -euo pipefail
+          # check_cpu_level has to be called from main() before choose_disk.
+          awk '/^main\(\)/,/^}/' config/pika-install > /tmp/main.txt
+          grep -q 'check_cpu_level' /tmp/main.txt || { echo "::error::main() does not gate on CPU level"; exit 1; }
+          grep -q 'pika-cpuidetect' config/pika-install || { echo "::error::installer never calls the detector"; exit 1; }
+          # Ordering: the gate must come first.
+          line_cpu=$(grep -n 'check_cpu_level' /tmp/main.txt | head -1 | cut -d: -f1)
+          line_disk=$(grep -n 'choose_disk' /tmp/main.txt | head -1 | cut -d: -f1)
+          [ "$line_cpu" -lt "$line_disk" ] || { echo "::error::CPU check must run before disk selection"; exit 1; }
+          echo "CPU gate runs before any disk operation"
+
+  no-upstream-dependency:
+    name: no dependency on the PikaOS upstream repo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert we don't point apt at upstream PikaOS
+        run: |
+          set -euo pipefail
+          # The image must be buildable without git.pika-os.com / pkg.pika-os.com.
+          # Comments explaining the omission are fine; a live sources.list or
+          # apt invocation is not.
+          if grep -rnE 'pkg\.pika-os\.com|git\.pika-os\.com' stages/ config/ 2>/dev/null \
+             | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(#|\*)'; then
+            echo "::error::stages reference the PikaOS upstream apt repo"
+            exit 1
+          fi
+          # Every sources.list we write must be plain Debian sid. MIRROR/SECURITY are
+          # shell variables defined to deb.debian.org, so allow those tokens.
+          grep -hE '^[[:space:]]*deb ' stages/*.sh \
+            | grep -v 'deb.debian.org' \
+            | grep -vE '\$\{?(MIRROR|SECURITY)\}?' && {
+            echo "::error::a sources.list entry points somewhere other than deb.debian.org"
+            exit 1
+          }
+          # ...and pikman must not track upstream tags via debian/watch.
+          test ! -f upstream/pikman/debian/watch \
+            || { echo "::error::debian/watch present (tracks upstream tags)"; exit 1; }
+          echo "no upstream apt/watch dependency"
+
+  shellcheck:
+    name: shellcheck stages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+      - name: Lint
+        run: |
+          # Ignore SC1091 (dynamic source of build-config) and SC2317 (trap).
+          shellcheck -e SC1091,SC2317 stages/*.sh build.sh
+
+  # ---------------------------------------------------------------------
+  # Boot smoke test: run the live ISO in QEMU and confirm the kernel
+  # reaches init. This validates the ISO actually boots, without needing a
+  # full GUI. Uses the GNOME ISO when one is present in the workspace.
+  # ---------------------------------------------------------------------
+  boot-test:
+    name: ISO boot test (QEMU)
+    runs-on: ubuntu-latest
+    if: hashFiles('out/*.iso') != ''
+    steps:
+      - uses: actions/checkout@v4
+      - name: Boot the ISO and wait for a login prompt
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf
+          ISO=$(ls out/*.iso | head -1)
+          echo "testing $ISO"
+          # -nographic + serial: we only need to see the kernel go live.
+          timeout 600 qemu-system-x86_64 \
+            -m 2048 -smp 2 -nographic -no-reboot \
+            -cdrom "$ISO" -boot d \
+            -serial file:/tmp/serial.log 2>/dev/null || true
+          echo "---- serial tail ----"
+          tail -40 /tmp/serial.log || true
+          if grep -qiE 'live-boot|GNOME|KDE|systemd\[1\]' /tmp/serial.log; then
+            echo "boot test: reached live session"
+          else
+            echo "::error::ISO did not reach a live session"
+            tail -60 /tmp/serial.log || true
+            exit 1
+          fi

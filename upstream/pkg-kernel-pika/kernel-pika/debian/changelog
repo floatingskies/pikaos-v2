@@ -1,0 +1,134 @@
+kernel-pika (2.7-100pika5) pikauwu; urgency=low
+
+  * ACPI Fix
+ 
+-- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.7-100pika4) pikauwu; urgency=low
+
+  * 6.8.3
+ 
+-- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.7-100pika3) pikauwu; urgency=low
+
+  * Add more fixes from nobara
+ 
+-- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.7-2pika1) pikauwu; urgency=low
+
+  * Add linux-perf
+ 
+-- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.7-1pika1) pikauwu; urgency=low
+
+  * Kernel 6.8.1
+ 
+-- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.6-100pika2) pikauwu; urgency=low
+
+  * Pikauwu and 6.6.0
+ 
+-- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.4-100pika1) pikauwu; urgency=low
+
+  * Pikauwu and 6.5.5
+ 
+-- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.3-2pika1.lunar) lunar; urgency=low
+
+  * Goodbye 6.4.9
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.3-1pika1.lunar) lunar; urgency=low
+
+  * 6.5.0 update
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.2-101pika1.lunar) lunar; urgency=low
+
+  * 6.4.9 update
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.2-100pika1.lunar) lunar; urgency=low
+
+  * 6.4.6 update
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.2-99pika1.lunar) lunar; urgency=low
+
+  * 6.4.3 update
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.1-99pika1.lunar) lunar; urgency=low
+
+  * 6.4 update
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.0-99pika3.lunar) lunar; urgency=low
+
+  * Add cpupower and turbostat
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+
+kernel-pika (2.0-99pika2.lunar) lunar; urgency=low
+
+  * Update kernel to 6.3.0
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.0) kinetic; urgency=low
+
+  * Update kernel to 6.3.0
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (2.0) kinetic; urgency=low
+
+  * Update kernel to 6.2.6
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (1.9) kinetic; urgency=low
+
+  * Update kernel to 6.2.5
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (1.8) kinetic; urgency=low
+
+  * Switch to new kernel
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+
+kernel-pika (1.5) kinetic; urgency=low
+
+  * Switch to fully custom kernel
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+
+kernel-pika (1.4) kinetic; urgency=low
+
+  * Switch to custom xanmod kernel
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200
+
+kernel-pika (1.3) kinetic; urgency=low
+
+  * Initial Creation
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 01 Oct 2022 14:50:00 +0200

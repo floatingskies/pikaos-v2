@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Update XDG user-dirs
+Exec=xdg-user-dirs-update
+Type=Application
+Terminal=false
+NoDisplay=true

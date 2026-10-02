@@ -1,0 +1,109 @@
+# PikaOS-v2 :: kernel fragment
+#
+# Target: x86-64-v2 / Sandy-Ivy Bridge era hardware (Core i5-3550 class).
+#
+# BASE IS x86_64_defconfig (already ships i915, snd-hda-intel, e1000/e1000e,
+# ahci, nvme, usb, btrfs, overlay, squashfs...). This fragment only makes the
+# deltas we actually care about. Requesting symbols that don't exist in 6.16
+# makes kconfig drop their siblings, so every line here is verified to exist.
+
+# ---- ISA level -----------------------------------------------------------
+# v2 = the ceiling for Ivy Bridge (AVX yes, AVX2/FMA/BMI no). We do NOT enable
+# -mavx2 anywhere; stock x86_64_defconfig already codegens to baseline+v2.
+CONFIG_X86_64=y
+CONFIG_RANDOM_TRUST_CPU=n
+
+# ---- Scheduling: better feel on older CPUs --------------------------------
+CONFIG_PREEMPT_NONE=y
+CONFIG_HZ_250=y
+CONFIG_NO_HZ_IDLE=y
+CONFIG_HZ_IDLE=y
+
+# ---- Power / laptop ------------------------------------------------------
+CONFIG_ACPI=y
+CONFIG_X86_ACPI_CPUFREQ=y
+CONFIG_CPU_FREQ_GOV_PERFORMANCE=y
+CONFIG_EFI_STUB=y
+CONFIG_HIBERNATION=y
+CONFIG_PM_SLEEP=y
+CONFIG_VT=y
+CONFIG_VT_CONSOLE=y
+
+# ---- Graphics: force Intel i915 for Ivy Bridge ---------------------------
+# Keep AMD/NVIDIA off in the live image: this is a PikaOS-v2 generic image and
+# i915 must be first in line for the target hardware.
+CONFIG_DRM=y
+CONFIG_DRM_KMS_HELPER=y
+CONFIG_DRM_I915=y
+CONFIG_AGP=y
+CONFIG_AGP_INTEL=y
+# NOTE on Intel PMC: CONFIG_INTEL_PMC_CORE (the 6.16 name for the old INTEL_PMC)
+# sits behind a deep chain (INTEL_VSEC -> INTEL_PMT_CLASS -> INTEL_PMT_TELEMETRY
+# -> INTEL_PMC_CORE). It is a telemetry/tuning nicety, NOT required for boot,
+# suspend-resume or graphics on Ivy Bridge, so we leave the default (=n) rather
+# than dragging in four platform-telemetry drivers. If you want it, add:
+#   CONFIG_INTEL_VSEC=y
+#   CONFIG_INTEL_PMT_CLASS=y
+#   CONFIG_INTEL_PMT_TELEMETRY=y
+#   CONFIG_INTEL_PMC_CORE=y
+CONFIG_DRM_FB_I915=y
+CONFIG_FB=y
+CONFIG_FB_EFI=y
+CONFIG_DRM_BOCHS=y
+# CONFIG_DRM_AMDGPU is not set
+# CONFIG_DRM_Radeon is not set
+
+# ---- Audio: Intel HD Audio (HDA is the only audio on this generation) -----
+CONFIG_SOUND=y
+CONFIG_SND=y
+CONFIG_SND_PCI=y
+CONFIG_SND_PCI_INTEL=y
+CONFIG_SND_HDA=y
+CONFIG_SND_HDA_INTEL=y
+CONFIG_SOUND_HDA_INTEL_HDMI=y
+
+# ---- Storage: legacy SATA/PATA (2012 OEM disks) --------------------------
+CONFIG_ATA=y
+CONFIG_ATA_PIIX=y
+CONFIG_SATA_PIIX=y
+CONFIG_SATA_AHCI=y
+CONFIG_ATA_GENERIC=y
+CONFIG_BLK_DEV_SD=y
+CONFIG_SD_VIA=y
+# NVMe + the filesystems the installer offers (btrfs/f2fs/ext4)
+CONFIG_BLK_DEV_NVME=y
+CONFIG_BTRFS_FS=y
+CONFIG_F2FS_FS=y
+
+# ---- Bluetooth -----------------------------------------------------------
+# NB: renamed from BTUSB to BT_HCIBTUSB in modern kernels.
+CONFIG_BT=y
+CONFIG_BT_RFCOMM=y
+CONFIG_BT_BNEP=y
+CONFIG_BT_HCIBTUSB=y
+
+# ---- Input / touchpad ----------------------------------------------------
+CONFIG_MOUSE_PS2_SYNAPTICS=y
+CONFIG_MOUSE_PS2_ELANTECH=y
+CONFIG_HID_MULTITOUCH=y
+CONFIG_SERIO_I8042=y
+CONFIG_MOUSE_ELAN_I2C=y
+
+# ---- Live image plumbing -------------------------------------------------
+CONFIG_OVERLAY_FS=y
+CONFIG_SQUASHFS=y
+CONFIG_SQUASHFS_ZSTD=y
+CONFIG_TMPFS=y
+
+# ---- Gaming / misc -------------------------------------------------------
+CONFIG_JOYSTICK=y
+CONFIG_JOYSTICK_XBOX=y
+CONFIG_JOYSTICK_HOLI=y
+CONFIG_V4L2_SUBDEV=y
+# CONFIG_DRM_VMWARE is not set
+
+# PikaOS tuning knobs live as sysctl/udev files, not kernel options:
+#   vm.* , kernel.split_lock_detect , net.*  -> /etc/sysctl.d/20-disable-split-lock-detect.conf
+#   io-scheduler rules                     -> 60-ioschedulers-pika.rules
+#   MTU probing                            -> 90-custom-mtu-probing.conf
+# (see stages/30-base.sh)

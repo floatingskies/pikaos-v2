@@ -1,0 +1,19 @@
+[General]
+BrowserApplication[$e]=firefox.desktop
+XftHintStyle=hintslight
+XftSubPixel=none
+widgetStyle=breeze
+
+[Paths]
+Desktop[$e]=$(xdg-user-dir DESKTOP)
+Documents[$e]=$(xdg-user-dir DOCUMENTS)
+#Trash[$e]=$(xdg-user-dir DESKTOP)/Trash/
+
+[Icons]
+Theme=Papirus-Dark
+
+[KDE]
+LookAndFeelPackage=org.pikaos.breeze-theme
+ShowDeleteCommand=true
+SingleClick=false
+widgetStyle=breeze

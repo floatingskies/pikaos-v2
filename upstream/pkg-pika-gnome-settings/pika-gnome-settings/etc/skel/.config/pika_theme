@@ -1,0 +1,38 @@
+#! /bin/bash
+
+### This file is used to define kvantum and gtk4/libadwaita Themes for GNOME
+## Set kvantum Themes
+
+# Set the kvantum theme gnome uses when in dark mode
+# Example: KVANTUM_THEME_DARK=Orchis-dark
+
+#KVANTUM_THEME_DARK=
+
+# Set the kvantum theme gnome uses when in light mode
+# Example: KVANTUM_THEME_LIGHT=Orchis
+
+#KVANTUM_THEME_LIGHT=
+
+## Set GTK3/Gnome-shell Themes (Use Theme names)
+
+# Set the GTK4/libadwaita theme gnome uses when in dark mode
+# Example: GTK_THEME_DARK=Orchis-Dark
+
+#GTK_THEME_DARK=
+
+# Set the GTK4/libadwaita theme gnome uses when in lightmode
+# Example: GTK_THEME_LIGHT=Orchis-Light
+
+#GTK_THEME_LIGHT=
+
+## Set GTK4/libadwaita Themes (Use PATHs)
+
+# Set the GTK4/libadwaita theme gnome uses when in dark mode
+# Example: GTK_THEME_PATH_DARK=/usr/share/Orchis-Dark
+
+#GTK_THEME_PATH_DARK=
+
+# Set the GTK4/libadwaita theme gnome uses when in lightmode
+# Example: GTK_THEME_PATH_LIGHT=/usr/share/Orchis-Light
+
+#GTK_THEME_PATH_LIGHT=

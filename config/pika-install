@@ -1,0 +1,243 @@
+#!/bin/bash
+# PikaOS v2 :: installer
+#
+# Guided, non-interactive-friendly installer for PikaOS v2.
+#
+# Two things are specific to this fork:
+#
+#  1. Microarchitecture check. The whole userland is compiled for
+#     x86-64-v2. Before touching any disk we run the same CPU-level detector
+#     that the live session uses, and refuse (or warn) when the machine
+#     cannot run what we are about to install.
+#
+#  2. GRUB, not rEFInd. Upstream PikaOS ships rEFInd; we use GRUB for both
+#     BIOS (grub-pc, MBR) and UEFI (grub-efi-amd64, ESP) targets because it
+#     is the bootloader Debian maintains best and it handles the v2 kernel
+#     with Secure Boot disabled out of the box.
+
+set -euo pipefail
+
+TARGET_ARCH="x86-64-v2"
+BOOTLOADER="grub"
+DETECT="${DETECT:-/usr/bin/pika-cpuidetect}"
+
+# ---- output helpers --------------------------------------------------------
+if [ -t 1 ]; then B=$'\033[1m'; G=$'\033[32m'; Y=$'\033[33m'; R=$'\033[31m'; N=$'\033[0m'
+else B=""; G=""; Y=""; R=""; N=""; fi
+say()  { printf '%s\n' "$*"; }
+ok()   { printf '%s  OK  %s %s\n' "$G" "$N" "$*"; }
+warn() { printf '%s WARN %s %s\n' "$Y" "$N" "$*" >&2; }
+die()  { printf '%s FAIL %s %s\n' "$R" "$N" "$*" >&2; exit 1; }
+
+require_root() { [ "$(id -u)" = 0 ] || die "run the installer as root (sudo pika-install)"; }
+
+# ---- 1. microarchitecture gate --------------------------------------------
+check_cpu_level() {
+  say ""
+  say "${B}Checking processor compatibility...${N}"
+
+  if [ ! -x "$DETECT" ]; then
+    warn "level detector not found at ${DETECT}; skipping the check"
+    return 0
+  fi
+
+  local out level model verdict
+  out="$("$DETECT" 2>/dev/null || true)"
+
+  if [ -z "$out" ]; then
+    warn "could not read CPU flags; skipping the check"
+    return 0
+  fi
+
+  level="$(printf '%s\n' "$out"    | sed -n 's/^level=//p')"
+  model="$(printf '%s\n' "$out"   | sed -n 's/^model=//p')"
+  verdict="$(printf '%s\n' "$out" | sed -n 's/^verdict=//p')"
+
+  say "  Processor : ${model:-unknown}"
+  say "  Level     : ${level:-unknown}   (this build targets ${TARGET_ARCH})"
+  [ -n "$verdict" ] && say "  Verdict   : ${verdict}"
+
+  case "$level" in
+    v3)
+      ok "CPU supports x86-64-v3; this v2 image runs fine here"
+      say "  ${Y}note${N}: this machine could also run a v3 build for extra speed"
+      ;;
+    v2)
+      ok "CPU supports x86-64-v2 -- exact match for this image"
+      say "  ${Y}note${N}: installing x86-64-v3 packages here would crash (SIGILL)"
+      ;;
+    v1|unknown)
+      warn "CPU is below x86-64-v2. Some optimised components may not run."
+      if [ "${FORCE:-0}" != "1" ]; then
+        say ""
+        read -r -p "  Continue anyway? [y/N] " a || die "aborted"
+        case "$a" in
+          y|Y|yes|YES) : ;;
+          *) die "aborted by user" ;;
+        esac
+      fi
+      ;;
+  esac
+  say ""
+}
+
+# ---- 2. disk selection -----------------------------------------------------
+choose_disk() {
+  say "${B}Available disks:${N}"
+  local -a disks=()
+  mapfile -t disks < <(lsblk -dno NAME,SIZE,MODEL,TYPE | awk '$4=="disk"{print}')
+
+  if [ "${#disks[@]}" -eq 0 ]; then die "no block devices found"; fi
+
+  local i
+  for i in "${!disks[@]}"; do
+    say "  [$((i+1))] ${disks[$i]}"
+  done
+  say ""
+  read -r -p "Target disk number [1]: " n
+  n="${n:-1}"
+  DISK="/dev/$(printf '%s' "${disks[$((n-1))]}" | awk '{print $1}')"
+  say "Selected: ${DISK}"
+  say ""
+  read -r -p "  ${R}Erase ${DISK} and install PikaOS v2? [y/N] " a
+  case "$a" in
+    y|Y|yes|YES) : ;;
+    *) die "aborted by user" ;;
+  esac
+  say ""
+}
+
+# ---- 3. partitioning -------------------------------------------------------
+# Simple layout: GPT, ESP (512M, UEFI only) + root (rest, ext4).
+partition_disk() {
+  say "${B}Partitioning ${DISK}...${N}"
+  wipefs -a "$DISK" >/dev/null 2>&1 || true
+  sgdisk --zap-all "$DISK" >/dev/null
+
+  sgdisk \
+    -n1:0:+512M -t1:ef00 -c1:"EFI System" \
+    -n2:0:0     -t2:8300 -c2:"pikav2-root" \
+    "$DISK" >/dev/null
+
+  partprobe "$DISK" || true
+  sleep 2
+
+  # LVM would be nicer, but a plain partition keeps the installer dependency
+  # free and is what most users expect from a single-partition install.
+  ESP_PART="${DISK}1"
+  ROOT_PART="${DISK}2"
+
+  say "  formatting ${ROOT_PART} (ext4)"
+  mkfs.ext4 -q -L "pikav2" "$ROOT_PART"
+  say "  OK  root filesystem created"
+}
+
+format_esp() {
+  say "  formatting ${ESP_PART} (FAT32, for UEFI boot)"
+  mkfs.fat -F32 -n "PIKAV2EFI" "$ESP_PART" >/dev/null
+  say "  OK  EFI system partition created"
+}
+
+# ---- 4. copy the system ----------------------------------------------------
+copy_system() {
+  say ""
+  say "${B}Copying the system to ${ROOT_PART}...${N}"
+  mount "$ROOT_PART" /mnt
+
+  # Exclude pseudo-filesystems and the live session's own state.
+  rsync -aHAX --numeric-ids \
+        --exclude=/dev --exclude=/proc --exclude=/sys --exclude=/run \
+        --exclude=/tmp --exclude=/mnt --exclude=/media \
+        --exclude=/var/cache/apt/archives/*.deb \
+        --exclude=/lost+found \
+        / "${ROOT_MOUNT:-mnt}/"
+
+  # Mount the ESP inside the target for grub-install.
+  mkdir -p "${ROOT_MOUNT:-mnt}/boot/efi"
+  mount "$ESP_PART" "${ROOT_MOUNT:-mnt}/boot/efi"
+  ok "filesystem copied"
+}
+
+# ---- 5. bootloader: GRUB (never rEFInd) ----------------------------------
+install_grub() {
+  say ""
+  say "${B}Installing ${BOOTLOADER}...${N}"
+
+  local target="${ROOT_MOUNT:-mnt}"
+
+  # fstab
+  cat > "${target}/etc/fstab" <<EOF
+# PikaOS v2 fstab
+UUID=$(blkid -s UUID -o value "$ROOT_PART")  /      ext4  defaults,noatime  0 1
+UUID=$(blkid -s UUID -o value "$ESP_PART")   /boot/efi vfat umask=0077      0 1
+tmpfs  /tmp  tmpfs  defaults,nosuid,nodev,size=2G  0 0
+EOF
+  ok "fstab written"
+
+  # Prefer UEFI when the machine booted in UEFI mode; fall back to BIOS/MBR.
+  if [ -d /sys/firmware/efi ]; then
+    say "  firmware: UEFI -> grub-efi-amd64"
+    chroot "$target" grub-install \
+      --target=x86_64-efi \
+      --efi-directory=/boot/efi \
+      --bootloader-id=PikaOS_v2 \
+      --recheck >/dev/null 2>&1 \
+      || { warn "grub-install (EFI) failed"; return 1; }
+  else
+    say "  firmware: BIOS -> grub-pc (MBR)"
+    chroot "$target" grub-install \
+      --target=i386-pc \
+      --recheck "$DISK" >/dev/null 2>&1 \
+      || { warn "grub-install (BIOS) failed"; return 1; }
+  fi
+  ok "grub installed"
+
+  chroot "$target" update-grub >/dev/null 2>&1 || warn "update-grub reported problems"
+  ok "boot menu generated"
+}
+
+# ---- 6. finish -------------------------------------------------------------
+finish_install() {
+  local target="${ROOT_MOUNT:-mnt}"
+  say ""
+  say "${B}Finalising...${N}"
+
+  # Remove the live-session leftovers from the installed system.
+  rm -rf "${target}/live" "${target}/cdrom" "${target}/.wget-hsts" || true
+  rm -f  "${target}/etc/fstab"~
+  chroot "$target" update-initramfs -u -k all >/dev/null 2>&1 || warn "initramfs update reported problems"
+
+  # Detach.
+  sync
+  umount "${target}/boot/efi" 2>/dev/null || true
+  umount "$target" 2>/dev/null || true
+
+  say ""
+  ok "PikaOS v2 installed successfully."
+  say ""
+  say "  Bootloader : ${BOOTLOADER} (${B}${G}not rEFInd${N})"
+  say "  Target     : ${TARGET_ARCH}"
+  say ""
+  say "  Remove the live USB and reboot."
+  say ""
+}
+
+# ---- main ------------------------------------------------------------------
+main() {
+  require_root
+
+  say ""
+  say "${B}  PikaOS v2 installer${N}"
+  say "  ${B}${TARGET_ARCH}${N} build, ${BOOTLOADER} bootloader"
+  say ""
+
+  check_cpu_level      # <- microarchitecture compatibility gate
+  choose_disk
+  partition_disk
+  format_esp
+  copy_system
+  install_grub
+  finish_install
+}
+
+main "$@"

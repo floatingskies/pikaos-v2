@@ -1,0 +1,114 @@
+Source: pika-gnome-desktop
+Section: metapackages
+Priority: optional
+Maintainer: Ward Nakchbandi <hotrod.master@hotmail.com>
+Standards-Version: 4.6.1
+Build-Depends: debhelper-compat (= 13)
+Rules-Requires-Root: no
+
+Package: pika-gnome-desktop-minimal
+Architecture: linux-any
+Depends: ${misc:Depends},
+# BaseOS
+    pika-baseos,
+# Basic Session
+    pika-gnome-session,
+    pika-gnome-settings | pika-settings,
+    gdm3,
+    gnome-shell,
+# Gnome VRR Session
+    gnome-shell-vrr,
+    mutter-vrr,
+# Fonts
+    fonts-cantarell,
+    fonts-dejavu-core,
+    fonts-freefont-ttf,
+    fonts-liberation,
+# Theming
+    gnome-themes-extra,
+    adwaita-icon-theme-full,
+    adw-gtk3-theme,
+    papirus-icon-theme,
+    sound-theme-freedesktop,
+    pika-theme,
+    pika-gdm-theme,
+# Plugins
+    xdg-desktop-portal-gnome,
+    chrome-gnome-shell,
+    ghostscript-x,
+    gnome-bluetooth,
+    gnome-online-miners,
+    gnome-menus,
+    gnome-video-effects,
+    inputattach,
+    libatk-adaptor,
+    libcanberra-gtk-module,
+    libpam-gnome-keyring,
+    network-manager-pptp-gnome,
+    network-manager-openvpn-gnome,
+    appmenu-gtk2-module,
+    appmenu-gtk3-module,
+    brltty,
+    language-selector-gnome,
+    gnome-remote-desktop,
+    gnome-shell-extension-supergfxctl-gex,
+    nautilus-share,
+    gir1.2-gmenu-3.0,
+# Applications
+    gnome-control-center,
+    gnome-disk-utility,
+    gnome-system-monitor,
+    gnome-terminal | kgx,
+    nautilus,
+    fonts-noto-color-emoji,
+    gnome-shell-extension-manager,
+    gnome-tweaks,
+    baobab,
+    eog,
+    firmware-manager,
+    geary,
+    gnome-text-editor,
+    gnome-calculator,
+    gnome-calendar,
+    gnome-contacts,
+    gnome-font-viewer,
+    gnome-power-manager,
+    gnome-weather,
+    gnome-photos,
+    gnome-sushi,
+    gucharmap,
+    ibus-table-emoji,
+    pika-welcome,
+    seahorse,
+    simple-scan,
+    yelp,
+    pavucontrol,
+    gnome-software,
+    gnome-software-plugin-flatpak,
+## Last to replace mime information
+    file-roller,
+Description: PikaOS Minimal Gnome Desktop Metapackage
+Recommends: firefox, pika-gnome-settings
+
+Package: pika-gnome-desktop
+Architecture: linux-any
+Depends: ${misc:Depends},
+# Pull minimal desktop
+    pika-gnome-desktop-minimal,
+# Essential Apps
+    build-essential,
+    wget,
+    git,
+    curl,
+# Gaming Utils
+    pika-gameutils-meta,
+# AMDGPU Utils
+    pika-amdgpu-switcher,
+    pika-rocm-meta,
+Recommends:
+    va-driver-all,
+    vdpau-driver-all,
+    vlc,
+    pika-codecs-meta,
+    pika-office-meta,
+Description: PikaOS Gnome Desktop Metapackage
