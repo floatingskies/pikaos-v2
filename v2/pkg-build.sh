@@ -60,11 +60,22 @@ run_build() {
     -v "$WORK/$KEY:/work" \
     -w /work \
     -e FORCE_UNSAFE_CONFIGURE=1 \
+    -e HOST_UID="$(id -u)" \
+    -e HOST_GID="$(id -g)" \
     "$IMAGE" bash -c '
       set -e
+      export DEBIAN_FRONTEND=noninteractive
+      # The host owns the tree as an unprivileged user but this container runs
+      # as root, so git refuses to touch /work ("detected dubious ownership").
+      git config --global --add safe.directory "*"
+      # Hand the tree back to the host user even if the build fails.
+      trap "chown -R ${HOST_UID}:${HOST_GID} /work" EXIT
       . ./pika-build-config.sh
       echo "[v2] PIKA_BUILD_ARCH=$PIKA_BUILD_ARCH"
       echo "[v2] CFLAGS=$DEB_CFLAGS_MAINT_APPEND"
+      # The builder image ships no apt lists (they are pruned to keep it slim),
+      # so refresh them before main.sh runs apt-get build-dep/source.
+      apt-get update
       bash ./main.sh
     '
 }
