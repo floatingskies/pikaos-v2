@@ -15,9 +15,11 @@ export ISO_DESKTOP="KDE"
 export ISO_ARCH="amd64"
 export ISO_RELEASE="4.0"
 export ISO_PATCH="1"
-export ISO_DATE="$(date +%y.%m.%d)"
+ISO_DATE="$(date +%y.%m.%d)"
+export ISO_DATE
 export ISO_LABEL="PKV2 $ISO_DATE $ISO_PATCH"
-export ISO_IMAGE="$ISO_DISTNAME-$ISO_DESKTOP-$ISO_RELEASE-$ISO_ARCH-$(date +%F)-$ISO_PATCH"
+ISO_IMAGE="$ISO_DISTNAME-$ISO_DESKTOP-$ISO_RELEASE-$ISO_ARCH-$(date +%F)-$ISO_PATCH"
+export ISO_IMAGE
 
 export LIVE_HOSTNAME="pikaos"
 export LIVE_USER="pikaos"

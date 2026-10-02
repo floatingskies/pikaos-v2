@@ -1,0 +1,36 @@
+base-files (13.1ubuntu99-100pika4) pikauwu; urgency=medium
+
+  * Update to pikauwu
+ 
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 15 Oct 2022 20:50:00 +0300
+
+
+base-files (12.3ubuntu99-99pika6) lunar; urgency=medium
+
+  * Update to new branding
+ 
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 15 Oct 2022 20:50:00 +0300
+
+base-files (12.3ubuntu99-99pika2) lunar; urgency=medium
+
+  * Upgrade to lunar
+ 
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 15 Oct 2022 20:50:00 +0300
+
+base-files (12.2ubuntu99-99pika6) kinetic; urgency=medium
+
+  * Move profile.d scripts to pika-baseos
+ 
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 15 Oct 2022 20:50:00 +0300
+
+base-files (12.99pika2) kinetic; urgency=medium
+
+  * Fix Icons sizes
+ 
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 15 Oct 2022 20:50:00 +0300
+
+base-files (12.99pika1) kinetic; urgency=medium
+
+  * PikaOS rebranding
+ 
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 15 Oct 2022 20:50:00 +0300

@@ -1,0 +1,5 @@
+#!/bin/sh
+
+printf "PikaOS Police: 911 what's your emergency?\n"
+printf "You: I Did Something Really stupid... plz save me.\n"
+printf "PikaOS Police: https://discord.gg/6HKR2YRvNg\n"

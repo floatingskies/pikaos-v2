@@ -1,0 +1,5 @@
+#! /bin/dash
+if [ "$(gsettings get org.pika.layouts pika-theme)"  = 1 ]
+then
+	pika-gnome-darkmode-py
+fi

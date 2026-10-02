@@ -1,0 +1,18 @@
+<schemalist>
+  <schema path="/org/pika/welcome/" id="org.pika.welcome">
+    <key type="b" name="startup-show">
+      <default>false</default>
+      <summary>Show PikaOS Welcome on startup.</summary>
+      <description>
+        Show PikaOS Welcome on startup.
+      </description>
+    </key>
+    <key type="b" name="use-system-icons">
+      <default>false</default>
+      <summary>Disables Hardcoded icons in Pika Welcome.</summary>
+      <description>
+        Disables Hardcoded icons in Pika Welcome.
+      </description>
+    </key>
+  </schema>
+</schemalist>

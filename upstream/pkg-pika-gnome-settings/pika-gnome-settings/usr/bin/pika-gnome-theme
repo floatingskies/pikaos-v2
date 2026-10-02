@@ -1,0 +1,29 @@
+#! /bin/bash
+
+# Remove current libadwaita theme
+rm -rfv $HOME/.config/gtk-4.0
+
+# Import Theme Settings From system dir
+if [ -f /etc/pika_theme ]
+then
+. "/etc/pika_theme"
+fi
+
+# Import Theme Settings From user dir
+if [ -f $HOME/.config/pika_theme ]
+then
+. "$HOME/.config/pika_theme"
+fi
+
+if [ "$(gsettings get org.gnome.desktop.interface color-scheme)" = "'prefer-dark'" ]
+then
+gsettings set org.gnome.shell.extensions.user-theme name "$GTK_THEME_DARK"
+gsettings set org.gnome.desktop.interface gtk-theme "$GTK_THEME_DARK"
+kvantummanager --set "$KVANTUM_THEME_DARK"
+cp -rfv "$GTK_THEME_PATH_DARK"/gtk-4.0 "$HOME"/.config/
+else
+gsettings set org.gnome.shell.extensions.user-theme name "$GTK_THEME_LIGHT"
+gsettings set org.gnome.desktop.interface gtk-theme "$GTK_THEME_LIGHT"
+kvantummanager --set "$KVANTUM_THEME_LIGHT"
+cp -rfv "$GTK_THEME_PATH_LIGHT"/gtk-4.0 "$HOME"/.config/
+fi

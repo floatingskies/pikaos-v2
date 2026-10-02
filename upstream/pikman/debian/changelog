@@ -1,0 +1,62 @@
+pikman (1.25.1.0.1-100pika1) pikauwu; urgency=low
+
+  * Nala is back
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 10 Dec 2022 13:48:00 +0300
+
+pikman (1.25.0.0.3-100pika1) pikauwu; urgency=low
+
+  * Update to PikaOS 3
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 10 Dec 2022 13:48:00 +0300
+
+pikman (1.25.0.0.3-99pika2.lunar) lunar; urgency=low
+
+  * APX container init if needed
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 10 Dec 2022 13:48:00 +0300
+
+pikman (1.24.0.0.3-99pika2.lunar) lunar; urgency=low
+
+  * Nala -> apt until nala-rs is out
+  * Fix bug in upgrades
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 10 Dec 2022 13:48:00 +0300
+
+pikman (1.23.6.5.1-99pika2.lunar) lunar; urgency=low
+
+  * Add upgrades with --json flag
+  * Big refactor, code is nicer now
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 10 Dec 2022 13:48:00 +0300
+
+pikman (1.23.2.17.1-99pika2.lunar) lunar; urgency=low
+
+  * Update.
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 10 Dec 2022 13:48:00 +0300
+
+pikman (1.23.2.17.1-99pika2) kinetic; urgency=low
+
+  * Update.
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 10 Dec 2022 13:48:00 +0300
+
+pikman (1.23.2.17.0) kinetic; urgency=low
+
+  * Update.
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 10 Dec 2022 13:48:00 +0300
+
+
+pikman (1.23.1.20.0-99pika1) kinetic; urgency=low
+
+  * Update.
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 10 Dec 2022 13:48:00 +0300
+
+pikman (0.11-99pika3) kinetic; urgency=low
+
+  * Initial release.
+
+ -- Ward Nakchbandi <hotrod.master@hotmail.com>  Sat, 10 Dec 2022 13:48:00 +0300

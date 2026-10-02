@@ -1,0 +1,13 @@
+#! /usr/bin/python3
+
+from gi.repository import Gio
+import subprocess
+import time
+gso=Gio.Settings.new("org.gnome.desktop.interface")
+gso_currnet=gso.get_value("color-scheme")
+
+while True:
+    gso_old, gso_currnet = gso_currnet, gso.get_value("color-scheme")
+    if gso_currnet != gso_old:
+        subprocess.run(["pika-gnome-theme"])
+    time.sleep(0.05)

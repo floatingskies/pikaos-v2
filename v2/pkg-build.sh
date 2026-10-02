@@ -147,7 +147,13 @@ cache_is_current() {
 
 save_stamp() {
   mkdir -p "$STAMP_DIR"
-  { printf '%s\n' "$FINGERPRINT"; ls -1 "$REPO/pool/main"/*.deb 2>/dev/null | xargs -r -n1 basename; } > "$STAMP_DIR/$KEY.stamp"
+  local d
+  {
+    printf '%s\n' "$FINGERPRINT"
+    for d in "$REPO/pool/main"/*.deb; do
+      [ -e "$d" ] && basename "$d"
+    done
+  } > "$STAMP_DIR/$KEY.stamp"
 }
 
 build_image

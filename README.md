@@ -104,62 +104,35 @@ Live user: **`pika`** / **`pika`**
 
 ## Building
 
-Everything runs in Docker and is driven by `build.sh`.
+The image is built in CI; `pipeline.yml` runs the whole chain
+(builder images -> package fleet -> apt index -> ISO -> Pages).
 
 ```bash
-./build.sh image        # build the builder container
-./build.sh bootstrap    # stage 10: mmdebstrap a Debian sid rootfs
-./build.sh kernel       # stage 20: build the x86-64-v2 kernel
-./build.sh base         # stage 30: base system, live user, branding
-./build.sh tools        # stage 40: rebuild the PikaOS components at v2
-./build.sh gnome        # stage 50: GNOME edition
-./build.sh kde          # stage 50: KDE edition
-./build.sh installer    # stage 80: detector + installer + GRUB
-./build.sh iso          # stage 60: squashfs + hybrid ISOs
-./build.sh verify-isa   # stage 70: ISA compliance report
+gh workflow run pipeline.yml -f recipe=full -f push_images=true
 ```
 
-Restrict the ISO stage to one edition:
+To build one ISO locally, after `v2/repo/pool/main` has debs (the CI step
+"Upload built debs" or `v2/pkg-build.sh` for each package):
 
 ```bash
-ONLY_FLAVOURS=kde ./build.sh iso
+./iso-v2/make-iso.sh full          # containerised, needs root and ~20G free
+./iso-v2/qemu-test.sh              # boot it under OVMF and dump the serial log
 ```
 
-Stages are **resumable**: each writes a marker under `out/state/`, so an
-interrupted run resumes instead of restarting. Delete a marker to force a
-rebuild.
-
-> Note: the `iso` stage must not be interrupted while `mksquashfs` is running —
-> xz compression of a 7G rootfs takes roughly 20 minutes on 4 cores and a
-> truncated image is not resumable. The stage reuses an existing squashfs when
-> one is present and large enough to be complete.
-
-### Kernel configuration
-
-Built from Debian's `linux` source, based on `x86_64_defconfig` (plain
-`defconfig` on 6.16 produces a config with no `CONFIG_NET` at all — a kernel
-with no networking), plus `config/kernel/pika-v2.fragment`.
-
-That fragment is verified after every build. The build **fails** if any of
-these is missing, because each one is required for this hardware:
-
-`CONFIG_DRM_I915` `CONFIG_SND_HDA_INTEL` `CONFIG_E1000E` `CONFIG_AGP_INTEL`
-`CONFIG_ATA_PIIX` `CONFIG_BTRFS_FS` `CONFIG_BLK_DEV_NVME`
-`CONFIG_BT_HCIBTUSB` `CONFIG_OVERLAY_FS` `CONFIG_MODULES`
-
-A few symbols were renamed in recent kernels and the fragment tracks the new
-names: `BTUSB` → `BT_HCIBTUSB`, `PTP_1588_CLOCK` → `PTP_1588_CLOCK_OPTIONAL`.
+`v2/pkg-build.sh <org>/<name>` builds a single package. It skips the build
+when the upstream commit and our injected build inputs (the v2 ISA flags and the
+dependency shims) are unchanged since the last successful build, so iterating on
+one package does not rebuild the fleet.
 
 ---
 
 ## Independence from upstream
 
-* `upstream/pikman` has its Go dependencies **vendored in-tree**; the build runs
-  with `GOPROXY=off` and `-mod=vendor`, so it never reaches the network and
-  never silently picks up a different upstream revision.
-* `upstream/pikman/debian/watch` was **removed** (it tracked upstream tags).
-* Nothing in `stages/` or `config/` points at `pkg.pika-os.com` or
-  `git.pika-os.com`; `sources.list` is plain Debian sid. CI enforces this.
+* Packages are rebuilt from `git.pika-os.com` with their upstream names intact,
+  so they stay trackable against upstream; nothing is forked silently.
+* The image itself needs no PikaOS apt repo: `sources.list` is plain Debian sid
+  (plus `deb-multimedia` for `libdvdcss2`, which Debian does not package for
+  amd64). CI enforces both.
 * `pikman`'s Debian dependencies were reduced to what we actually ship
   (`apt-utils`, `flatpak`, `podman`), dropping the PikaOS-only
   `pika-apx-configs` / `vanilla-apx-gui`.
@@ -173,17 +146,19 @@ full ISO build, since the rootfs alone exceeds a runner's ephemeral disk:
 
 * kernel fragment applies and keeps every Ivy Bridge driver
 * no `x86-64-v3` / `mavx2` / `mfma` flag anywhere in the v2 build config
-* `pikman` builds offline and contains no above-v2 instructions
+* the CPU level detector classifies v1/v2/v3 correctly
+* the installer targets GRUB for both UEFI and BIOS and never rEFInd
 * no reference to the PikaOS upstream apt repo
-* `shellcheck` over all stages and scripts
-* QEMU boot smoke test when an ISO is present
+* `shellcheck` over the image build, the installer and the v2 tooling
+
+The package fleet, the ISO and the boot smoke test live in `pipeline.yml`,
+because they need the builder images and the full disk a runner only has once.
 
 ---
 
 ## Layout
 
 ```
-build.sh                  build driver
 config/
   pika.conf               version, target arch, flavours
   build-config/
@@ -192,9 +167,10 @@ config/
   kernel/pika-v2.fragment kernel tuning
   pika-cpuidetect         x86-64 level detector
   pika-install            installer (detector gate + GRUB)
-stages/                   10,20,30,40,50,60,70,80
-upstream/                 vendored PikaOS components
-.github/workflows/ci.yml
+iso-v2/                   the v2 live ISO build (GRUB2 + Debian live-boot)
+v2/                       x86-64-v2 package fleet, build cache and apt index
+.github/workflows/ci.yml  fast checks on every push
+.github/workflows/pipeline.yml  images -> packages -> repo -> ISO
 ```
 
 ## License
