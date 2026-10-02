@@ -141,11 +141,24 @@ version 3, unless a package states otherwise. Those copyright notices,
 AUTHORS files and licence texts are retained in each package's own
 /usr/share/doc/<package>/copyright and must be preserved when redistributing.
 
-Image assets
-------------
-Only assets with an explicit free licence are redistributed. The papirus icon
-theme is GPL-3.0. Wallpapers and artwork are replaced by the distributor's own
-branding unless their licence is known to permit reuse with attribution.
+Third-party artwork
+-------------------
+pika-wallpapers, sound-theme-pika
+  Upstream-Name: pop-fonts
+  Copyright: Copyright 2016-2017 System76
+  License: SIL Open Font License 1.1 (OFL-1.1)
+  The OFL permits redistribution and bundling, provided the notice is kept.
+
+papirus-colors
+  Copyright: 2021 Alexey Varfolomeev; debian/* 2022 Erich Eickmeyer
+  License: GPL-3
+
+Distributor artwork
+-------------------
+The WoofOS logo and wallpaper shipped under /usr/share/woofos/branding and
+/usr/share/backgrounds are the distributor's own and are covered by this
+project's licence. Assets from upstream whose licence does not clearly permit
+redistribution are not shipped.
 EOF
 
 log "WoofOS customisation done"

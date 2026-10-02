@@ -37,6 +37,17 @@ Debian
 
 Image assets
 ------------
-Only assets with an explicit free licence are redistributed. The papirus icon
-theme is GPL-3.0. Artwork that is not known to permit reuse with attribution is
-not redistributed; the distributor's own branding is used instead.
+Only assets with an explicit free licence are redistributed, and their notices
+are preserved:
+
+  pika-wallpapers, sound-theme-pika
+    Upstream-Name: pop-fonts
+    Copyright: Copyright 2016-2017 System76
+    License: SIL Open Font License 1.1 (OFL-1.1)
+
+  papirus-colors
+    Copyright: 2021 Alexey Varfolomeev; debian/* 2022 Erich Eickmeyer
+    License: GPL-3
+
+Artwork whose licence does not clearly permit redistribution is not shipped; the
+distributor's own branding is used instead.
