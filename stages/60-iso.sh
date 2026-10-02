@@ -66,25 +66,38 @@ for F in ${FLAVOURS}; do
   # Reuse an existing, complete squashfs: compressing 7G with xz takes ~20min
   # and interrupting a run leaves a truncated image behind, so only rebuild if
   # the file is missing or obviously incomplete.
+  # Compression is zstd, NOT xz. Our kernel config has CONFIG_SQUASHFS_ZSTD=y
+  # but deliberately no CONFIG_SQUASHFS_XZ, and live-boot then fails with:
+  #   Can not mount /dev/loop0 (...filesystem.squashfs)
+  # zstd is also dramatically faster to compress (~5x) at a comparable ratio,
+  # which matters because this runs on every build.
+  # -Xbcj x86 is xz/gzip-only, so it is not used with zstd.
+  SQCOMP="zstd"
   SQ="${ISOOUT}/${F}/live/filesystem.squashfs"
   NEED_SQ=1
   if [ -s "${SQ}" ]; then
-    # Compare against the source size: a finished squashfs is much smaller
-    # than the rootfs it was built from, but never near-zero.
-    src_kb="$(du -sk --exclude=proc --exclude=sys --exclude=dev "${FROOT}" 2>/dev/null | cut -f1)"
-    sq_kb="$(du -k "${SQ}" | cut -f1)"
-    if [ "${sq_kb}" -gt 200000 ]; then
-      NEED_SQ=0
-      echo "    reusing existing squashfs (${sq_kb}K, source ${src_kb}K)"
+    # Reuse only if it was built with the SAME compression. Otherwise we would
+    # silently ship an image the kernel cannot mount.
+    prev="$(cat "${SQ}.comp" 2>/dev/null || echo none)"
+    if [ "${prev}" != "${SQCOMP}" ]; then
+      echo "    existing squashfs was built with '${prev}', need '${SQCOMP}'; rebuilding"
     else
-      echo "    existing squashfs looks truncated (${sq_kb}K); rebuilding"
+      src_kb="$(du -sk --exclude=proc --exclude=sys --exclude=dev "${FROOT}" 2>/dev/null | cut -f1)"
+      sq_kb="$(du -k "${SQ}" | cut -f1)"
+      if [ "${sq_kb}" -gt 200000 ]; then
+        NEED_SQ=0
+        echo "    reusing existing squashfs (${sq_kb}K, source ${src_kb}K)"
+      else
+        echo "    existing squashfs looks truncated (${sq_kb}K); rebuilding"
+      fi
     fi
   fi
   if [ "${NEED_SQ}" = 1 ]; then
     rm -f "${SQ}"
     mksquashfs "${FROOT}" "${SQ}" \
-      -comp xz -b 131072 -Xbcj x86 \
+      -comp "${SQCOMP}" -Xcompression-level 19 -b 1048576 \
       -noappend -no-progress -all-root 2>&1 | tail -2
+    printf '%s' "${SQCOMP}" > "${SQ}.comp"
   fi
 
   # The squashfs is what actually ships. Verify the components we promised
@@ -130,15 +143,15 @@ for F in ${FLAVOURS}; do
   cat > "${D}/boot/grub/grub.cfg" <<EOF
 set timeout=10
 menuentry "PikaOS v2 (${CODENAME}) ${F^^} [live]" {
-  linux /live/vmlinuz boot=live components quiet splash toram
+  linux /live/vmlinuz boot=live components console=ttyS0 console=tty0 quiet splash toram
   initrd /live/initrd.img
 }
 menuentry "PikaOS v2 ${F^^} (safe graphics)" {
-  linux /live/vmlinuz boot=live components nomodeset nosplash
+  linux /live/vmlinuz boot=live components console=ttyS0 console=tty0 nomodeset nosplash
   initrd /live/initrd.img
 }
 menuentry "PikaOS v2 ${F^^} (RAM disk)" {
-  linux /live/vmlinuz boot=live components toram mem=2G
+  linux /live/vmlinuz boot=live components console=ttyS0 console=tty0 toram mem=2G
   initrd /live/initrd.img
 }
 EOF
@@ -165,11 +178,11 @@ MENU TITLE PikaOS v2 (${CODENAME}) ${F^^}
 LABEL live
   MENU LABEL PikaOS v2 ${F^^} [live]
   KERNEL /live/vmlinuz
-  APPEND initrd=/live/initrd.img boot=live components quiet splash toram
+  APPEND initrd=/live/initrd.img boot=live components console=ttyS0 console=tty0 quiet splash toram
 LABEL safe
   MENU LABEL PikaOS v2 ${F^^} (safe graphics)
   KERNEL /live/vmlinuz
-  APPEND initrd=/live/initrd.img boot=live components nomodeset nosplash
+  APPEND initrd=/live/initrd.img boot=live components console=ttyS0 console=tty0 nomodeset nosplash
 LABEL hd
   MENU LABEL Boot from local disk
   LOCALBOOT 0x80
@@ -211,18 +224,33 @@ EOF
   echo ">>> xorriso ${OUTISO}"
   rm -f "${OUTISO}"
 
-  # xorriso's -as mkisofs frontend. Note the BIOS entry uses
-  #   -b/-c + -boot-load-size 4 -boot-info-table
-  # rather than --eltorito-boot, so libisofs pads the 38K isolinux.bin into a
-  # valid boot image itself. Hand-padding breaks it ("Disk error 01").
+  # xorriso invocation follows upstream PikaOS iso/mk/iso.mk (the non-GRUB_BIOS
+  # branch) so the result matches what PikaOS ships:
+  #   -J -r                          Joliet + Rock Ridge (Unix perms)
+  #   -isohybrid-mbr + -isohybrid-gpt-basdat
+  #                                  makes the ISO dd-able to a USB stick and
+  #                                  bootable on UEFI firmware from USB
+  #   -b/-c + -no-emul-boot -boot-load-size 4 -boot-info-table
+  #                                  let libisofs build the boot image itself.
+  #                                  Hand-padding isolinux.bin produces
+  #                                  "ISOLINUX 6.04 ... Disk error 01".
+  #   --volume_date all_file_dates   reproducible timestamps
+  ISO_EPOCH="${SOURCE_DATE_EPOCH:-$(date -d '2026-01-01' +%s)}"
   xorriso -as mkisofs \
-    -iso-level 3 -full-iso9660-filenames -volid "PIKAV2${F^^}" \
-    -b isolinux/isolinux.bin -c isolinux/boot.cat \
+    -J -r -iso-level 3 -full-iso9660-filenames \
+    -volid "PIKAV2${F^^}" \
+    -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
+    -c isolinux/boot.cat -b isolinux/isolinux.bin \
     -no-emul-boot -boot-load-size 4 -boot-info-table \
-    --eltorito-alt-boot \
-    -e boot/grub/x86_64-efi/BOOTX64.EFI -no-emul-boot \
-    -output "${OUTISO}" "${D}"
+    -eltorito-alt-boot -e boot/grub/x86_64-efi/BOOTX64.EFI -no-emul-boot \
+    -isohybrid-gpt-basdat \
+    -output "${OUTISO}" "${D}" \
+    -- -volume_date all_file_dates ="${ISO_EPOCH}"
 
+  [ -s "${OUTISO}" ] || { echo "FATAL: xorriso produced nothing"; exit 1; }
+  # Users want to verify a download; upstream ships SHA256SUMS for this.
+  ( cd "$(dirname "${OUTISO}")" && sha256sum "$(basename "${OUTISO}")" \
+      > "$(basename "${OUTISO}").sha256" )
   ls -lh "${OUTISO}"
 done
 

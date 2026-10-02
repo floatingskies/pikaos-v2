@@ -93,6 +93,10 @@ CONFIG_MOUSE_ELAN_I2C=y
 CONFIG_OVERLAY_FS=y
 CONFIG_SQUASHFS=y
 CONFIG_SQUASHFS_ZSTD=y
+# xz support for squashfs: not needed (we ship zstd) but keeps the
+# kernel able to mount upstream-style -comp xz live images.
+CONFIG_SQUASHFS_XZ=y
+CONFIG_SQUASHFS_X86=y
 CONFIG_TMPFS=y
 
 # ---- Gaming / misc -------------------------------------------------------

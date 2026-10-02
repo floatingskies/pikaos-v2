@@ -1,0 +1,72 @@
+name: v2 repo index
+
+# Port of pika-base-debian-container/.github/workflows/gen-apt-config.yml:
+# regenerate repository metadata from the built packages and (optionally)
+# commit it. Upstream regenerates pins/json from a full Pika archive; here the
+# tree is the flat v2/repo the ISO installs from, so the "config" is just the
+# Packages index plus the file:// source list.
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Commit the refreshed index to the branch
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      commit:
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: v2-repo-index-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Collect built debs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: v2-debs-*
+          merge-multiple: true
+          path: v2/repo/pool/main
+
+      - name: Regenerate Packages / Release / source list
+        run: |
+          chmod +x ./v2/ci/repo-index.sh
+          ./v2/ci/repo-index.sh
+
+      - name: Upload the indexed repo
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-repo
+          path: |
+            v2/repo/Packages
+            v2/repo/Packages.gz
+            v2/repo/Release
+            v2/repo/pikaos-v2.list
+            v2/repo/pool/main/*.deb
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Commit the index
+        if: inputs.commit == true && github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- v2/repo/Packages v2/repo/Packages.gz v2/repo/Release v2/repo/pikaos-v2.list; then
+            echo "index unchanged"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add v2/repo/Packages v2/repo/Packages.gz v2/repo/Release v2/repo/pikaos-v2.list
+          git commit -m 'chore(v2): refresh package index'
+          git push

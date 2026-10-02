@@ -50,6 +50,12 @@ chroot_run apt-get update
 BASE_PKGS="
 systemd-sysv udev dbus dbus-user-session
 live-boot live-config live-boot-initramfs-tools initramfs-tools
+# cpio is NOT pulled in by initramfs-tools on sid, and without it
+# mkinitramfs silently produces a 0-byte main archive: the initrd ends up
+# containing only the early microcode cpio, with no /init, no scripts/ and no
+# live-boot, so the kernel can never mount the squashfs. It was masked by
+# "update-initramfs ... || true". Install it explicitly and assert on it.
+cpio zstd
 sudo locales keyboard-configuration console-setup
 plymouth
 gdisk parted dosfstools f2fs-tools xfsprogs btrfs-progs rsync
@@ -74,7 +80,25 @@ echo ">>> installing kernel: $(basename "${KDEB}")"
 cp "${KDEB}" "${ROOTFS}/tmp/"
 chroot_run ${APT} install "/tmp/$(basename "${KDEB}")"
 rm -f "${ROOTFS}/tmp/$(basename "${KDEB}")"
-chroot_run update-initramfs -u -k all || true
+
+# Build the real initramfs. This must NOT be allowed to fail quietly: a
+# silently-empty initrd boots to a dead kernel with no visible cause.
+echo ">>> building initramfs"
+chroot_run update-initramfs -u -k all
+
+# Assert the initrd is actually usable. A microcode-only initrd is the classic
+# symptom of a missing cpio, and it is invisible unless we look.
+INITRD="${ROOTFS}/boot/initrd.img-${KVER_FULL:-6.16.12-pikaos}"
+INITRD="$(ls "${ROOTFS}"/boot/initrd.img-* 2>/dev/null | head -1)"
+[ -n "${INITRD}" ] || { echo "FATAL: no initrd produced"; exit 1; }
+if ! lsinitramfs "${INITRD}" 2>/dev/null | grep -qx 'init'; then
+  echo "FATAL: ${INITRD} has no /init -- it is microcode-only." >&2
+  echo "       (almost always a missing 'cpio' in the rootfs)" >&2
+  exit 1
+fi
+lsinitramfs "${INITRD}" 2>/dev/null | grep -q 'live-boot' \
+  || { echo "FATAL: live-boot missing from ${INITRD}"; exit 1; }
+ok "initramfs verified ($(du -h "${INITRD}" | cut -f1), has /init + live-boot)"
 
 # ------------------------------------------------------------- hostname ----
 echo "${LIVE_HOST}" > "${ROOTFS}/etc/hostname"

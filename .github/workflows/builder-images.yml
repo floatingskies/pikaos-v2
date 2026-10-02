@@ -1,0 +1,119 @@
+name: Builder images
+
+# Port of PikaOS docker-images/.github/workflows/pika-images.yml, retargeted
+# from git.pika-os.com to GHCR and from the 8-leg variant matrix to the two
+# images this monorepo actually needs:
+#   pika-v2-builder -- Debian sid + the audited PikaOS packaging toolchain
+#                      (v2 ISA is injected per build by v2/pkg-build.sh)
+#   pika-iso-v2     -- debootstrap/mmdebstrap/xorriso/mtools/squashfs-tools
+#
+# Images are pushed only after the build succeeds and never from a pull request.
+# Consumers pull them by the `latest` tag or the run's short SHA.
+
+on:
+  workflow_dispatch:
+    inputs:
+      push_images:
+        description: Push the images to GHCR after a successful build
+        type: boolean
+        default: true
+      tag:
+        description: Image tag (defaults to the current ref name)
+        type: string
+        default: ''
+  push:
+    branches: [main, master]
+    paths:
+      - 'v2/builder/**'
+      - 'iso-v2/Dockerfile'
+      - '.github/workflows/builder-images.yml'
+  pull_request:
+    paths:
+      - 'v2/builder/**'
+      - 'iso-v2/Dockerfile'
+      - '.github/workflows/builder-images.yml'
+  workflow_call:
+    inputs:
+      push_images:
+        type: boolean
+        default: true
+      tag:
+        type: string
+        default: ''
+    outputs:
+      tag:
+        description: The tag the images were published under
+        value: ${{ jobs.build.outputs.tag }}
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: builder-images-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: pika-v2-builder
+            context: v2/builder
+          - image: pika-iso-v2
+            context: iso-v2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the image tag and the push decision
+        id: meta
+        env:
+          IN_TAG: ${{ inputs.tag }}
+          PUSH_IMAGES: ${{ inputs.push_images }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          tag="$IN_TAG"
+          [ -n "$tag" ] || tag="${GITHUB_REF_NAME:-main}"
+          [ -n "$tag" ] || tag=main
+          tag="${tag//\//-}"
+          case "$EVENT" in
+            pull_request) should_push=false ;;
+            workflow_dispatch)
+              if [ "$PUSH_IMAGES" = "false" ]; then should_push=false; else should_push=true; fi ;;
+            *) should_push=true ;;
+          esac
+          {
+            echo "tag=$tag"
+            echo "should_push=$should_push"
+            echo "image=$REGISTRY/$GITHUB_REPOSITORY/${{ matrix.image }}"
+          } >> "$GITHUB_OUTPUT"
+          echo "image=$REGISTRY/$GITHUB_REPOSITORY/${{ matrix.image }}:$tag (push=$should_push)"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: steps.meta.outputs.should_push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: ${{ steps.meta.outputs.should_push == 'true' }}
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.image }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

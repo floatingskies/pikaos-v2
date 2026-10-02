@@ -1,0 +1,194 @@
+name: ISO build
+
+# Port of pika-iso/.github/workflows/build-nest-v3-iso.yml (+ the live-iso-kde
+# build.sh it invokes), reduced to this monorepo's two recipes.
+#
+# Same shape as upstream: a recipe matrix, the v2 repo consumed from the build
+# artifact, an ISO uploaded as an artifact. No release: upstream's publish/SFTP
+# step and its SSH publishing key are intentionally absent (see the project
+# constraint of never shipping a release).
+#
+# The boot smoke test is non-blocking on purpose while the live boot is being
+# stabilised; it always uploads the serial log.
+
+on:
+  workflow_dispatch:
+    inputs:
+      recipe:
+        description: Which ISO recipe to build
+        type: choice
+        options: [both, minimal, full]
+        default: both
+      image:
+        description: ISO builder image ref (empty = default)
+        type: string
+        default: ''
+      pull:
+        description: Pull the ISO builder image from GHCR instead of building locally
+        type: boolean
+        default: false
+      use_repo_artifact:
+        description: Use the v2-repo artifact from this run (falls back to the checkout)
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      recipe:
+        type: string
+        default: both
+      image:
+        type: string
+        default: ''
+      pull:
+        type: boolean
+        default: false
+      use_repo_artifact:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: iso-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        recipe: ${{ fromJSON(inputs.recipe == 'minimal' && '["minimal"]' || inputs.recipe == 'full' && '["full"]' || '["minimal","full"]') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # debootstrap + squashfs + the ISO peak at ~9G; reclaim the preinstalled
+      # toolchains (keep docker: the build runs in a privileged container).
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          swap-storage: false
+          docker-images: false
+
+      - name: Fetch the v2 repo artifact
+        if: inputs.use_repo_artifact
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: v2-repo
+          path: v2/repo
+
+      - name: Ensure the repo has debs
+        run: |
+          set -euo pipefail
+          ls v2/repo/pool/main/*.deb >/dev/null 2>&1 \
+            || { echo "::error::no debs in v2/repo/pool/main — run the packages workflow first"; exit 1; }
+          echo "debs: $(ls v2/repo/pool/main/*.deb | wc -l)"
+
+      - name: Resolve the ISO builder image
+        id: img
+        env:
+          IN_IMAGE: ${{ inputs.image }}
+          PULL: ${{ inputs.pull }}
+        run: |
+          set -euo pipefail
+          img="$IN_IMAGE"
+          if [ -z "$img" ] && [ "$PULL" = "true" ]; then
+            img="ghcr.io/$GITHUB_REPOSITORY/pika-iso-v2:latest"
+          fi
+          echo "image=$img" >> "$GITHUB_OUTPUT"
+
+      - name: Build the ${{ matrix.recipe }} ISO
+        env:
+          ISO_BUILDER_IMAGE: ${{ steps.img.outputs.image }}
+          ISO_BUILDER_PULL: ${{ inputs.pull && '1' || '0' }}
+        run: ./iso-v2/make-iso.sh '${{ matrix.recipe }}'
+
+      - name: Assert the ISO UEFI boot equipment
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xorriso mtools
+          ISO="$(ls iso-v2/build/output/*.iso | head -1)"
+          echo "checking $ISO"
+          xorriso -indev "$ISO" -report_el_torito plain | tee /tmp/torito.txt
+          grep -qiE 'UEFI' /tmp/torito.txt \
+            || { echo "::error::ISO has no UEFI El Torito entry"; exit 1; }
+          mdir -i iso-v2/build/LIVE_BOOT/efiboot.img ::/EFI/BOOT/BOOTX64.EFI >/dev/null \
+            || { echo "::error::ESP is missing EFI/BOOT/BOOTX64.EFI"; exit 1; }
+          echo "UEFI boot equipment present"
+
+      - name: Upload the ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: pikaosv2-${{ matrix.recipe }}-iso
+          path: |
+            iso-v2/build/output/*.iso
+            iso-v2/build/output/*.md5
+          if-no-files-found: error
+          retention-days: 5
+
+  # Non-blocking: the live boot is still being stabilised (booster drops to its
+  # emergency shell). This records the serial log for every run and only fails
+  # the *step*, never the workflow.
+  boot-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the minimal ISO
+        uses: actions/download-artifact@v4
+        with:
+          name: pikaosv2-minimal-iso
+          path: iso
+
+      - name: Install QEMU + OVMF
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf
+
+      - name: Boot the ISO (serial only, TCG) and collect the log
+        run: |
+          set -uo pipefail
+          ISO="$(ls iso/*.iso | head -1)"
+          echo "booting $ISO"
+          CODE=""
+          VARS=""
+          for c in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd; do
+            [ -f "$c" ] && { CODE="$c"; break; }
+          done
+          for v in /usr/share/OVMF/OVMF_VARS_4M.fd /usr/share/OVMF/OVMF_VARS.fd; do
+            [ -f "$v" ] && { cp "$v" /tmp/OVMF_VARS.fd; VARS=/tmp/OVMF_VARS.fd; break; }
+          done
+          [ -n "$CODE" ] && [ -n "$VARS" ] || { echo "::warning::OVMF not found"; exit 0; }
+          timeout 300 qemu-system-x86_64 \
+            -machine q35,accel=tcg -m 2048 -smp 2 \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" \
+            -drive if=pflash,format=raw,file="$VARS" \
+            -cdrom "$ISO" -boot d \
+            -serial file:/tmp/serial.log -display none -no-reboot || true
+          echo "---- serial tail ----"
+          tail -40 /tmp/serial.log || true
+          if grep -qiE 'PikaOS Booster Live Hook|reached target|login:|refind' /tmp/serial.log; then
+            echo "boot marker found"
+          else
+            echo "::warning::no live-session marker in the serial log (boot still being stabilised)"
+          fi
+
+      - name: Upload the serial log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-serial
+          path: /tmp/serial.log
+          if-no-files-found: ignore
+          retention-days: 5

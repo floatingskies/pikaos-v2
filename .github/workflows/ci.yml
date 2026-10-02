@@ -260,15 +260,28 @@ jobs:
   boot-test:
     name: ISO boot test (QEMU)
     runs-on: ubuntu-latest
-    if: hashFiles('out/*.iso') != ''
     steps:
       - uses: actions/checkout@v4
+
+      - name: Look for an ISO in out/
+        id: iso
+        run: |
+          set -euo pipefail
+          if compgen -G 'out/*.iso' >/dev/null; then
+            echo "path=$(ls out/*.iso | head -1)" >> "$GITHUB_OUTPUT"
+            echo "found=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=0" >> "$GITHUB_OUTPUT"
+            echo "no ISO in out/ — skipping boot smoke test"
+          fi
+
       - name: Boot the ISO and wait for a login prompt
+        if: steps.iso.outputs.found == '1'
         run: |
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq qemu-system-x86 ovmf
-          ISO=$(ls out/*.iso | head -1)
+          ISO="${{ steps.iso.outputs.path }}"
           echo "testing $ISO"
           # -nographic + serial: we only need to see the kernel go live.
           timeout 600 qemu-system-x86_64 \

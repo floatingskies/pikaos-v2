@@ -1,0 +1,102 @@
+name: repo-publish
+
+# Publishes the PikaOS-v2 flat APT repository to GitHub Pages so an *installed*
+# system can keep updating (config/pika-install points at
+# https://<owner>.github.io/pikaos-v2/).
+#
+# One-time setup: Settings -> Pages -> Build and deployment -> Source:
+# "GitHub Actions". Until that is enabled the deploy step fails; the indexing
+# step still validates that a publishable tree can be produced.
+#
+# Payload: the v2-debs-* artifacts produced by v2-packages. They come from
+#   * the current run, when called by pipeline (workflow_call), or
+#   * the triggering run (workflow_run), or
+#   * the latest successful v2-packages run (manual dispatch).
+# No GitHub release is ever created.
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  workflow_run:
+    workflows: ["v2 package builds"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the source run (dispatch / workflow_run)
+        id: src
+        if: github.event_name != 'workflow_call'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            id="${{ github.event.workflow_run.id }}"
+          else
+            id="$(gh run list --repo "$GITHUB_REPOSITORY" \
+                    --workflow v2-packages.yml --status success --limit 1 \
+                    --json databaseId --jq '.[0].databaseId')"
+          fi
+          echo "run_id=$id" >> "$GITHUB_OUTPUT"
+          echo "publishing packages from run: ${id:-<none>}"
+
+      - name: Download deb artifacts (from the resolved run)
+        if: github.event_name != 'workflow_call' && steps.src.outputs.run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          pattern: v2-debs-*
+          path: .artifacts
+          merge-multiple: true
+          run-id: ${{ steps.src.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download deb artifacts (from this run)
+        if: github.event_name == 'workflow_call'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: v2-debs-*
+          path: .artifacts
+          merge-multiple: true
+
+      - name: Build the flat apt repository
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq dpkg-dev apt-utils
+          mkdir -p repo/pool/main
+          if [ -d .artifacts ]; then
+            find .artifacts -name '*.deb' -exec cp -t repo/pool/main {} +
+          fi
+          V2_REPO="$PWD/repo" v2/ci/repo-index.sh
+          # The file:// source list is only meaningful for the live build.
+          rm -f repo/pikaos-v2.list
+          touch repo/.nojekyll
+          echo "--- repository contents ---"
+          ls -la repo
+          echo "--- packages ---"
+          ls -la repo/pool/main
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: repo
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

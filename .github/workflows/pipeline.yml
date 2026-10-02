@@ -1,0 +1,78 @@
+name: pipeline
+
+# One dispatch that runs the whole PikaOS-v2 chain, in the order the pieces
+# depend on each other:
+#
+#   builder-images -> v2-packages -> repo-index -> iso
+#                                     \-> repo-publish (GitHub Pages)
+#
+# Each stage is a reusable workflow and every stage can also be dispatched on
+# its own (that is the point of splitting them: a package fix reruns
+# v2-packages + repo-index + iso without rebuilding the images). Nothing is
+# ever released.
+
+on:
+  workflow_dispatch:
+    inputs:
+      recipe:
+        description: Which ISO recipe to build
+        type: choice
+        options: [both, minimal, full]
+        default: both
+      push_images:
+        description: Push the builder images to GHCR (and pull them downstream)
+        type: boolean
+        default: true
+      commit_index:
+        description: Commit the refreshed apt index back to the branch
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pipeline-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  images:
+    uses: ./.github/workflows/builder-images.yml
+    with:
+      push_images: ${{ inputs.push_images }}
+      tag: ${{ github.ref_name }}
+
+  packages:
+    needs: images
+    uses: ./.github/workflows/v2-packages.yml
+    with:
+      package: all
+      pull: ${{ inputs.push_images }}
+      upload: true
+
+  repo:
+    needs: packages
+    uses: ./.github/workflows/repo-index.yml
+    with:
+      commit: ${{ inputs.commit_index }}
+
+  # Publish the flat apt repo to GitHub Pages (requires Pages enabled once in
+  # Settings -> Pages -> Source: GitHub Actions).
+  publish:
+    needs: repo
+    uses: ./.github/workflows/repo-publish.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+  iso:
+    needs: repo
+    uses: ./.github/workflows/iso.yml
+    with:
+      recipe: ${{ inputs.recipe }}
+      pull: ${{ inputs.push_images }}
+      use_repo_artifact: true

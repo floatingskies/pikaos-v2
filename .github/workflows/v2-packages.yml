@@ -1,0 +1,151 @@
+name: v2 package builds
+
+# Port of repo-tools/workflows/.gitea/scoped_workflows/nb-package-build.yml to a
+# single monorepo.
+#
+# Upstream injects one scoped workflow into ~330 repos; here the "fleet" is the
+# list in v2/ci/packages.tsv and one job builds one package with v2/pkg-build.sh.
+# The Gitea-only pieces are deliberately gone:
+#   * scoped-workflow injection -> a reusable workflow (workflow_call) + matrix
+#   * incoming-dir allowlist / branch release gate / SSH deploy key -> nothing
+#     is ever published; debs are uploaded as an artifact only
+#   * binNMU reversion, Rust/LTO wrappers -> not needed by the boot/desktop set
+#
+# The hardening that is kept: apt index read from the local repo, a builder
+# image pin (GHCR), and per-package failure artifacts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: '"all" or a package slug from v2/ci/packages.tsv'
+        type: string
+        default: all
+      image:
+        description: Builder image ref (empty = default)
+        type: string
+        default: ''
+      pull:
+        description: Pull the builder image from GHCR instead of building locally
+        type: boolean
+        default: false
+      upload:
+        description: Upload the built debs as an artifact
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      package:
+        type: string
+        default: all
+      image:
+        type: string
+        default: ''
+      pull:
+        type: boolean
+        default: false
+      upload:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: v2-packages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Expand the package list into a matrix
+        id: plan
+        env:
+          SEL: ${{ inputs.package }}
+        run: |
+          set -euo pipefail
+          mapfile -t all < <(grep -vE '^[[:space:]]*(#|$)' v2/ci/packages.tsv)
+          [ "${#all[@]}" -gt 0 ] || { echo "::error::v2/ci/packages.tsv is empty"; exit 1; }
+
+          if [ -z "${SEL:-}" ] || [ "$SEL" = all ]; then
+            picked=("${all[@]}")
+          else
+            picked=()
+            for want in $(printf '%s' "$SEL" | tr ',' ' '); do
+              hit=""
+              for p in "${all[@]}"; do
+                case "$p" in
+                  "$want"|"${want##*/}") hit="$p"; break ;;
+                esac
+              done
+              [ -n "$hit" ] || { echo "::error::unknown package '$want'; known: ${all[*]}"; exit 1; }
+              picked+=("$hit")
+            done
+          fi
+
+          json="$(printf '%s\n' "${picked[@]}" | sed 's/.*/"&"/' | paste -sd, -)"
+          echo "matrix={\"package\":[$json]}" >> "$GITHUB_OUTPUT"
+          echo "selected: ${picked[*]}"
+
+  build:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The sid builder plus apt caches overflow the ephemeral runner on the
+      # larger Pika packages; reclaim the preinstalled toolchains first.
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          swap-storage: false
+          docker-images: false
+
+      - name: Resolve the builder image
+        id: img
+        env:
+          IN_IMAGE: ${{ inputs.image }}
+          PULL: ${{ inputs.pull }}
+        run: |
+          set -euo pipefail
+          img="$IN_IMAGE"
+          if [ -z "$img" ] && [ "$PULL" = "true" ]; then
+            img="ghcr.io/$GITHUB_REPOSITORY/pika-v2-builder:latest"
+          fi
+          echo "image=$img" >> "$GITHUB_OUTPUT"
+
+      - name: Build ${{ matrix.package }}
+        env:
+          PKG_BUILDER_IMAGE: ${{ steps.img.outputs.image }}
+          PKG_BUILDER_PULL: ${{ inputs.pull && '1' || '0' }}
+        run: ./v2/pkg-build.sh '${{ matrix.package }}'
+
+      - name: Derive the artifact slug
+        id: slug
+        env:
+          PKG: ${{ matrix.package }}
+        run: echo "slug=${PKG##*/}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload built debs
+        if: success() && inputs.upload != false
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-debs-${{ steps.slug.outputs.slug }}
+          path: |
+            v2/repo/pool/main/*.deb
+          if-no-files-found: warn
+          retention-days: 7

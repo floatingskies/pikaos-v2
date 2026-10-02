@@ -1,0 +1,139 @@
+Package: booster
+Version: 0.12.1.ferreogit1-101pika4
+Architecture: amd64
+Maintainer: ferrreo <harderthanfire@gmail.com>
+Installed-Size: 15289
+Pre-Depends: initramfs-tools, initramfs-tools-core, initramfs-tools-bin
+Depends: libc6 (>= 2.34), binutils, kbd, libdevmapper-event1.02.1, libdevmapper1.02.1, busybox, console-data, lvm2, pciutils, lz4
+Recommends: jq, systemd-ukify, systemd-boot-efi, plymouth, plymouth-themes, plymouth-theme-pika
+Conflicts: booster-temp
+Replaces: booster-temp
+Filename: pool/main/booster_0.12.1.ferreogit1-101pika4_amd64.deb
+Size: 4448500
+MD5sum: ccef7d823c481040f26d73847aad6427
+SHA1: e0748eeb1c46ee25836622cb2fa3f776967f3881
+SHA256: bd15d61b85d16080ed9c5ee513ad697b1a8cc78e8cde765e192088d00ac2d273
+Section: main
+Priority: optional
+Description: booster initramfs generation
+
+Package: booster-dbgsym
+Source: booster
+Version: 0.12.1.ferreogit1-101pika4
+Auto-Built-Package: debug-symbols
+Architecture: amd64
+Maintainer: ferrreo <harderthanfire@gmail.com>
+Installed-Size: 6872
+Depends: booster (= 0.12.1.ferreogit1-101pika4)
+Filename: pool/main/booster-dbgsym_0.12.1.ferreogit1-101pika4_amd64.deb
+Size: 6004748
+MD5sum: 10d23b0a04cad520633a7f858131f372
+SHA1: a0de571cf91d24f8316e16b13014675ebe4e2ff6
+SHA256: 8af1408a5ef08635e951c22b69d014ed925ab0e0d6fb0bd8676c2b1e6b17ef39
+Section: debug
+Priority: optional
+Description: debug symbols for booster
+Build-Ids: 0e384ca47c95a135a2e0486e98d642882a794e1d ba078a2b8c89f82eedcce924099e0d1ffb855b68
+
+Package: booster-placeholder
+Source: booster
+Version: 0.12.1.ferreogit1-101pika4
+Architecture: amd64
+Maintainer: ferrreo <harderthanfire@gmail.com>
+Installed-Size: 10
+Depends: binutils, kbd, libdevmapper-event1.02.1, libdevmapper1.02.1, busybox, pciutils, lz4
+Provides: booster (= 0.12.1.ferreogit1-101pika4)
+Filename: pool/main/booster-placeholder_0.12.1.ferreogit1-101pika4_amd64.deb
+Size: 3880
+MD5sum: 5ec488cb1ebc8bf5ca0210011c32f0ff
+SHA1: 470ee5a71ab383724846c880383f341437675b40
+SHA256: b12c3645ecacad747919a9e06460062152496e2ae8bc49c1c2dd7eb5790515e2
+Section: main
+Priority: optional
+Description: PLACEHOLDER FOR ISO BUILDS DO NOT USE.
+
+Package: booster-temp
+Source: booster
+Version: 0.12.1.ferreogit1-101pika4
+Architecture: amd64
+Maintainer: ferrreo <harderthanfire@gmail.com>
+Installed-Size: 15288
+Depends: libc6 (>= 2.34), binutils, kbd, libdevmapper-event1.02.1, libdevmapper1.02.1, busybox, pciutils, lz4
+Conflicts: booster
+Replaces: booster
+Provides: booster (= 0.12.1.ferreogit1-101pika4)
+Filename: pool/main/booster-temp_0.12.1.ferreogit1-101pika4_amd64.deb
+Size: 4448284
+MD5sum: e9bc8fd978ba179f957b1c1a4537fec9
+SHA1: b6d428ff9debf9b24411cd1a3e864081208cf990
+SHA256: bc4db84e3f2f40a54dabf1e9667b4efb4f19cb476e2306aa37a28c35d0382939
+Section: main
+Priority: optional
+Description: PLACEHOLDER FOR ISO INSTALLS DO NOT USE.
+
+Package: booster-temp-dbgsym
+Source: booster
+Version: 0.12.1.ferreogit1-101pika4
+Auto-Built-Package: debug-symbols
+Architecture: amd64
+Maintainer: ferrreo <harderthanfire@gmail.com>
+Installed-Size: 6872
+Depends: booster-temp (= 0.12.1.ferreogit1-101pika4)
+Filename: pool/main/booster-temp-dbgsym_0.12.1.ferreogit1-101pika4_amd64.deb
+Size: 6004756
+MD5sum: d181caeda280e262f46cfc868ddc71bc
+SHA1: c399b3917495ca38dbbbc70bbe8ad0ee68e48a54
+SHA256: 0fd44c091a9e62f8135abe592f597ef92dcfc1dceec3d5c677b87cee54c3be4e
+Section: debug
+Priority: optional
+Description: debug symbols for booster-temp
+Build-Ids: 0e384ca47c95a135a2e0486e98d642882a794e1d ba078a2b8c89f82eedcce924099e0d1ffb855b68
+
+Package: pika-live-booster-hooks
+Version: 1.0-101pika8
+Architecture: amd64
+Maintainer: ferreo <harderthanfire@gmail.com>
+Installed-Size: 137
+Depends: libc6 (>= 2.34), booster
+Filename: pool/main/pika-live-booster-hooks_1.0-101pika8_amd64.deb
+Size: 45492
+MD5sum: 1781f8626254fdc222937d12051020ba
+SHA1: 1f6c4482794fb4e02a6dc2be211ae76624a0830f
+SHA256: 2f331e834fe1daf065739e9716c016604713daac11f2d65fc648b5af9681384a
+Section: admin
+Priority: optional
+Description: Booster hooks for PikaOS LiveISO.
+
+Package: pika-live-booster-hooks-dbgsym
+Source: pika-live-booster-hooks
+Version: 1.0-101pika8
+Auto-Built-Package: debug-symbols
+Architecture: amd64
+Maintainer: ferreo <harderthanfire@gmail.com>
+Installed-Size: 121
+Depends: pika-live-booster-hooks (= 1.0-101pika8)
+Filename: pool/main/pika-live-booster-hooks-dbgsym_1.0-101pika8_amd64.deb
+Size: 91108
+MD5sum: 7f1f6d91a70cff4932b46594315715a1
+SHA1: ef32f3ef5a1095bfb67152f02a37c03bc4ff33f2
+SHA256: 0395af251285618bf1a2f475aee7c85275da7d6c3530ca3ba768492a1348fff0
+Section: debug
+Priority: optional
+Description: debug symbols for pika-live-booster-hooks
+Build-Ids: 12c99c48459c764aa03e8927a0b40390accbe221
+
+Package: pika-refind-theme
+Version: 1.6-101pika5
+Architecture: all
+Maintainer: ferreo <harderthanfire@gmail.com>
+Installed-Size: 1957
+Depends: refind
+Filename: pool/main/pika-refind-theme_1.6-101pika5_all.deb
+Size: 1659336
+MD5sum: 6a5af6052a3028d0066204950137a78d
+SHA1: fa7c600e5a509bf917f6079d8a1e0b94ff40fd92
+SHA256: d2c08947ab14715305dac9f53bf5986c832193dfad4b5655cd39098566fbf46c
+Section: admin
+Priority: optional
+Description: Pika theme for refind
+

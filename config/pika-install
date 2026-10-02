@@ -1,25 +1,56 @@
 #!/bin/bash
 # PikaOS v2 :: installer
 #
-# Guided, non-interactive-friendly installer for PikaOS v2.
+# Guided installer for PikaOS v2. It copies the running live system onto a
+# target disk and turns it into a normal, bootable, updatable installation.
 #
-# Two things are specific to this fork:
+# Things that are specific to this fork:
 #
-#  1. Microarchitecture check. The whole userland is compiled for
-#     x86-64-v2. Before touching any disk we run the same CPU-level detector
-#     that the live session uses, and refuse (or warn) when the machine
-#     cannot run what we are about to install.
+#  1. Microarchitecture gate. The whole userland is compiled for x86-64-v2.
+#     Before touching any disk we run the same CPU-level detector the live
+#     session uses and refuse (or warn) when the machine cannot run what we
+#     are about to install.
 #
-#  2. GRUB, not rEFInd. Upstream PikaOS ships rEFInd; we use GRUB for both
-#     BIOS (grub-pc, MBR) and UEFI (grub-efi-amd64, ESP) targets because it
-#     is the bootloader Debian maintains best and it handles the v2 kernel
-#     with Secure Boot disabled out of the box.
+#  2. GRUB, not rEFInd. Upstream PikaOS boots with rEFInd; for an *installed*
+#     system we use GRUB because Debian maintains it best, it works on both
+#     BIOS and UEFI, and it survives kernel upgrades (update-grub) without
+#     extra plumbing.
+#
+#  3. A durable update channel. The installed system is pointed at the Debian
+#     sid mirror plus the PikaOS-v2 flat repository (see PIKA_V2_REPO_URL),
+#     so the user can keep the machine updated after installation.
+#
+# Non-interactive use: pass --auto together with --disk, USER_PASSWORD and
+# (optionally) --hostname. DRYRUN=1 prints what would happen without touching
+# anything.
 
 set -euo pipefail
 
 TARGET_ARCH="x86-64-v2"
 BOOTLOADER="grub"
 DETECT="${DETECT:-/usr/bin/pika-cpuidetect}"
+
+# Destination root while installing, and where the ESP is mounted inside it.
+TARGET="${ROOT_MOUNT:-/mnt}"
+ESP_MOUNTPOINT="/boot/efi"
+
+# Update channel for the installed system. PikaOS-v2 packages are published as
+# a flat (un-signed, trusted=yes) repository on GitHub Pages.
+PIKA_V2_REPO_URL="${PIKA_V2_REPO_URL:-https://floatingskies.github.io/pikaos-v2}"
+DEBIAN_MIRROR="${DEBIAN_MIRROR:-http://deb.debian.org/debian}"
+DEBIAN_SUITE="${DEBIAN_SUITE:-sid}"
+
+# Behaviour switches.
+AUTO="${AUTO:-0}"        # 1 = never prompt
+DRYRUN="${DRYRUN:-0}"    # 1 = print the plan, touch nothing
+FORCE="${FORCE:-0}"      # 1 = skip confirmation prompts
+SWAP_SIZE="${SWAP_SIZE:-2G}"
+
+# Target system identity.
+USERNAME="${USERNAME:-pikaos}"
+USER_GECOS="${USER_GECOS:-PikaOS User}"
+HOSTNAME_TARGET="${HOSTNAME_TARGET:-pikaos}"
+TIMEZONE="${TIMEZONE:-UTC}"
 
 # ---- output helpers --------------------------------------------------------
 if [ -t 1 ]; then B=$'\033[1m'; G=$'\033[32m'; Y=$'\033[33m'; R=$'\033[31m'; N=$'\033[0m'
@@ -29,215 +60,453 @@ ok()   { printf '%s  OK  %s %s\n' "$G" "$N" "$*"; }
 warn() { printf '%s WARN %s %s\n' "$Y" "$N" "$*" >&2; }
 die()  { printf '%s FAIL %s %s\n' "$R" "$N" "$*" >&2; exit 1; }
 
-require_root() { [ "$(id -u)" = 0 ] || die "run the installer as root (sudo pika-install)"; }
+# run: execute a system-modifying command, or just describe it under DRYRUN.
+run() {
+    if [ "$DRYRUN" = 1 ]; then
+        printf '  %s[dry-run]%s %s\n' "$Y" "$N" "$*" >&2
+        return 0
+    fi
+    "$@"
+}
+
+# emit: write stdin to a file, or just print it under DRYRUN.
+emit() {
+    local path="$1"
+    if [ "$DRYRUN" = 1 ]; then
+        printf '  %s[dry-run]%s would write %s:\n' "$Y" "$N" "$path" >&2
+        sed 's/^/    /' >&2
+    else
+        cat > "$path"
+    fi
+}
+
+usage() {
+    cat <<EOF
+PikaOS v2 installer
+
+Usage: pika-install [options]
+
+Options:
+  --disk DEVICE      Target disk (e.g. /dev/sda, /dev/nvme0n1)
+  --hostname NAME    Hostname for the installed system (default: $HOSTNAME_TARGET)
+  --user NAME        Primary user name (default: $USERNAME)
+  --timezone TZ      Timezone (default: $TIMEZONE)
+  --swap SIZE        Swapfile size, 0 to disable (default: $SWAP_SIZE)
+  --auto             Non-interactive; requires --disk and USER_PASSWORD
+  --yes              Assume "yes" to confirmations
+  --dry-run          Print the plan and exit without touching disks
+  -h, --help         Show this help
+
+Environment:
+  USER_PASSWORD      Password for the primary user (required with --auto)
+  PIKA_V2_REPO_URL   PikaOS-v2 apt repository (default: $PIKA_V2_REPO_URL)
+  DEBIAN_MIRROR      Debian mirror (default: $DEBIAN_MIRROR)
+  DEBIAN_SUITE       Debian suite (default: $DEBIAN_SUITE)
+EOF
+}
+
+require_root() {
+    [ "$DRYRUN" = 1 ] && return 0
+    [ "$(id -u)" = 0 ] || die "run the installer as root (sudo pika-install)"
+    [ -d /sys/firmware ] || die "unsupported environment"
+}
+
+# ---- disk naming (handles NVMe/MMC "p" separator) --------------------------
+part_name() {
+    local disk="$1" n="$2"
+    case "$disk" in
+        *[0-9]) printf '%sp%s\n' "$disk" "$n" ;;
+        *)      printf '%s%s\n'  "$disk" "$n" ;;
+    esac
+}
 
 # ---- 1. microarchitecture gate --------------------------------------------
 check_cpu_level() {
-  say ""
-  say "${B}Checking processor compatibility...${N}"
+    say ""
+    say "${B}Checking processor compatibility...${N}"
 
-  if [ ! -x "$DETECT" ]; then
-    warn "level detector not found at ${DETECT}; skipping the check"
-    return 0
-  fi
+    if [ ! -x "$DETECT" ]; then
+        warn "level detector not found at ${DETECT}; skipping the check"
+        return 0
+    fi
 
-  local out level model verdict
-  out="$("$DETECT" 2>/dev/null || true)"
+    local out level model verdict
+    out="$("$DETECT" 2>/dev/null || true)"
+    if [ -z "$out" ]; then
+        warn "could not read CPU flags; skipping the check"
+        return 0
+    fi
 
-  if [ -z "$out" ]; then
-    warn "could not read CPU flags; skipping the check"
-    return 0
-  fi
+    level="$(printf '%s\n' "$out"    | sed -n 's/^level=//p')"
+    model="$(printf '%s\n' "$out"   | sed -n 's/^model=//p')"
+    verdict="$(printf '%s\n' "$out" | sed -n 's/^verdict=//p')"
 
-  level="$(printf '%s\n' "$out"    | sed -n 's/^level=//p')"
-  model="$(printf '%s\n' "$out"   | sed -n 's/^model=//p')"
-  verdict="$(printf '%s\n' "$out" | sed -n 's/^verdict=//p')"
+    say "  Processor : ${model:-unknown}"
+    say "  Level     : ${level:-unknown}   (this build targets ${TARGET_ARCH})"
+    [ -n "$verdict" ] && say "  Verdict   : ${verdict}"
 
-  say "  Processor : ${model:-unknown}"
-  say "  Level     : ${level:-unknown}   (this build targets ${TARGET_ARCH})"
-  [ -n "$verdict" ] && say "  Verdict   : ${verdict}"
-
-  case "$level" in
-    v3)
-      ok "CPU supports x86-64-v3; this v2 image runs fine here"
-      say "  ${Y}note${N}: this machine could also run a v3 build for extra speed"
-      ;;
-    v2)
-      ok "CPU supports x86-64-v2 -- exact match for this image"
-      say "  ${Y}note${N}: installing x86-64-v3 packages here would crash (SIGILL)"
-      ;;
-    v1|unknown)
-      warn "CPU is below x86-64-v2. Some optimised components may not run."
-      if [ "${FORCE:-0}" != "1" ]; then
-        say ""
-        read -r -p "  Continue anyway? [y/N] " a || die "aborted"
-        case "$a" in
-          y|Y|yes|YES) : ;;
-          *) die "aborted by user" ;;
-        esac
-      fi
-      ;;
-  esac
-  say ""
+    case "$level" in
+        v3)
+            ok "CPU supports x86-64-v3; this v2 image runs fine here"
+            say "  ${Y}note${N}: this machine could also run a v3 build for extra speed"
+            ;;
+        v2)
+            ok "CPU supports x86-64-v2 -- exact match for this image"
+            ;;
+        v1|unknown)
+            warn "CPU is below x86-64-v2. Some optimised components may not run."
+            if [ "$FORCE" != 1 ] && [ "$AUTO" != 1 ]; then
+                local a
+                say ""
+                read -r -p "  Continue anyway? [y/N] " a || a=""
+                case "$a" in y|Y|yes|YES) : ;; *) die "aborted by user" ;; esac
+            fi
+            ;;
+    esac
+    say ""
 }
 
 # ---- 2. disk selection -----------------------------------------------------
 choose_disk() {
-  say "${B}Available disks:${N}"
-  local -a disks=()
-  mapfile -t disks < <(lsblk -dno NAME,SIZE,MODEL,TYPE | awk '$4=="disk"{print}')
+    if [ -n "${DISK:-}" ]; then
+        say "Target disk (from environment): ${DISK}"
+    else
+        say "${B}Available disks:${N}"
+        local -a disks=()
+        mapfile -t disks < <(lsblk -dno NAME,SIZE,MODEL,TYPE | awk '$4=="disk"{print}')
 
-  if [ "${#disks[@]}" -eq 0 ]; then die "no block devices found"; fi
+        if [ "${#disks[@]}" -eq 0 ]; then die "no block devices found"; fi
 
-  local i
-  for i in "${!disks[@]}"; do
-    say "  [$((i+1))] ${disks[$i]}"
-  done
-  say ""
-  read -r -p "Target disk number [1]: " n
-  n="${n:-1}"
-  DISK="/dev/$(printf '%s' "${disks[$((n-1))]}" | awk '{print $1}')"
-  say "Selected: ${DISK}"
-  say ""
-  read -r -p "  ${R}Erase ${DISK} and install PikaOS v2? [y/N] " a
-  case "$a" in
-    y|Y|yes|YES) : ;;
-    *) die "aborted by user" ;;
-  esac
-  say ""
+        local i
+        for i in "${!disks[@]}"; do
+            say "  [$((i+1))] ${disks[$i]}"
+        done
+        say ""
+        read -r -p "Target disk number [1]: " n
+        n="${n:-1}"
+        DISK="/dev/$(printf '%s' "${disks[$((n-1))]}" | awk '{print $1}')"
+    fi
+
+    [ -b "$DISK" ] || [ "$DRYRUN" = 1 ] || die "not a block device: ${DISK}"
+
+    say "Selected: ${DISK}"
+    if [ "$FORCE" != 1 ] && [ "$AUTO" != 1 ]; then
+        local a
+        say ""
+        read -r -p "  ${R}Erase ${DISK} and install PikaOS v2? [y/N] " a || a=""
+        case "$a" in y|Y|yes|YES) : ;; *) die "aborted by user" ;; esac
+    fi
+    say ""
 }
 
 # ---- 3. partitioning -------------------------------------------------------
-# Simple layout: GPT, ESP (512M, UEFI only) + root (rest, ext4).
+# GPT layout: ESP (512M, UEFI) + root (rest, ext4). A plain partition keeps the
+# installer dependency-free and is what most users expect.
 partition_disk() {
-  say "${B}Partitioning ${DISK}...${N}"
-  wipefs -a "$DISK" >/dev/null 2>&1 || true
-  sgdisk --zap-all "$DISK" >/dev/null
+    local esp root
+    esp="$(part_name "$DISK" 1)"
+    root="$(part_name "$DISK" 2)"
+    ESP_PART="$esp"
+    ROOT_PART="$root"
 
-  sgdisk \
-    -n1:0:+512M -t1:ef00 -c1:"EFI System" \
-    -n2:0:0     -t2:8300 -c2:"pikav2-root" \
-    "$DISK" >/dev/null
+    say "${B}Partitioning ${DISK}...${N}"
+    say "  EFI system : ${ESP_PART} (512M)"
+    say "  root       : ${ROOT_PART} (rest, ext4)"
 
-  partprobe "$DISK" || true
-  sleep 2
-
-  # LVM would be nicer, but a plain partition keeps the installer dependency
-  # free and is what most users expect from a single-partition install.
-  ESP_PART="${DISK}1"
-  ROOT_PART="${DISK}2"
-
-  say "  formatting ${ROOT_PART} (ext4)"
-  mkfs.ext4 -q -L "pikav2" "$ROOT_PART"
-  say "  OK  root filesystem created"
+    run wipefs -a "$DISK"
+    run sgdisk --zap-all "$DISK"
+    run sgdisk \
+        -n1:0:+512M -t1:ef00 -c1:"EFI System" \
+        -n2:0:0     -t2:8300 -c2:"pikav2-root" \
+        "$DISK"
+    run partprobe "$DISK"
+    [ "$DRYRUN" = 1 ] || { command -v udevadm >/dev/null 2>&1 && udevadm settle || sleep 2; }
+    say ""
 }
 
-format_esp() {
-  say "  formatting ${ESP_PART} (FAT32, for UEFI boot)"
-  mkfs.fat -F32 -n "PIKAV2EFI" "$ESP_PART" >/dev/null
-  say "  OK  EFI system partition created"
+format_parts() {
+    say "${B}Formatting...${N}"
+    run mkfs.fat -F32 -n "PIKAV2EFI" "$ESP_PART"
+    run mkfs.ext4 -q -F -L "pikav2" "$ROOT_PART"
+    say ""
 }
 
-# ---- 4. copy the system ----------------------------------------------------
+# ---- 4. mount target + copy the system ------------------------------------
+MOUNTS=()
+umount_all() {
+    set +e
+    local m
+    for (( idx=${#MOUNTS[@]}-1; idx>=0; idx-- )); do
+        m="${MOUNTS[$idx]}"
+        umount "$m" 2>/dev/null || umount -lf "$m" 2>/dev/null
+    done
+}
+trap umount_all EXIT
+
+mount_target() {
+    say "${B}Mounting target...${N}"
+    run mount "$ROOT_PART" "$TARGET"
+    run mkdir -p "$TARGET$ESP_MOUNTPOINT"
+    run mount "$ESP_PART" "$TARGET$ESP_MOUNTPOINT"
+    MOUNTS+=("$TARGET$ESP_MOUNTPOINT")
+
+    # Pseudo-filesystems so chroot'ed tools (grub-install, update-initramfs,
+    # useradd, systemctl) behave like on a running system.
+    run mount -t proc  proc  "$TARGET/proc"  -o nosuid,nodev,noexec
+    MOUNTS+=("$TARGET/proc")
+    run mount -t sysfs sys   "$TARGET/sys"   -o nosuid,nodev,noexec,ro
+    MOUNTS+=("$TARGET/sys")
+    run mount --bind /dev    "$TARGET/dev"
+    MOUNTS+=("$TARGET/dev")
+    run mount --bind /dev/pts "$TARGET/dev/pts"
+    MOUNTS+=("$TARGET/dev/pts")
+    run mount -t tmpfs run   "$TARGET/run"   -o mode=0755,nosuid,nodev
+    MOUNTS+=("$TARGET/run")
+
+    if [ -d /sys/firmware/efi/efivars ]; then
+        run mount --bind /sys/firmware/efi/efivars "$TARGET/sys/firmware/efi/efivars"
+        MOUNTS+=("$TARGET/sys/firmware/efi/efivars")
+    fi
+    say ""
+}
+
 copy_system() {
-  say ""
-  say "${B}Copying the system to ${ROOT_PART}...${N}"
-  mount "$ROOT_PART" /mnt
-
-  # Exclude pseudo-filesystems and the live session's own state.
-  rsync -aHAX --numeric-ids \
+    say "${B}Copying the live system to ${ROOT_PART}...${N}"
+    run rsync -aHAX --numeric-ids \
         --exclude=/dev --exclude=/proc --exclude=/sys --exclude=/run \
-        --exclude=/tmp --exclude=/mnt --exclude=/media \
+        --exclude=/tmp --exclude="$TARGET" --exclude=/media --exclude=/cdrom \
+        --exclude=/live --exclude=/lost+found \
+        --exclude=/swapfile \
         --exclude=/var/cache/apt/archives/*.deb \
-        --exclude=/lost+found \
-        / "${ROOT_MOUNT:-mnt}/"
-
-  # Mount the ESP inside the target for grub-install.
-  mkdir -p "${ROOT_MOUNT:-mnt}/boot/efi"
-  mount "$ESP_PART" "${ROOT_MOUNT:-mnt}/boot/efi"
-  ok "filesystem copied"
+        --exclude=/root/live.env --exclude=/root/live-setup.sh \
+        / "$TARGET/"
+    ok "filesystem copied"
+    say ""
 }
 
-# ---- 5. bootloader: GRUB (never rEFInd) ----------------------------------
-install_grub() {
-  say ""
-  say "${B}Installing ${BOOTLOADER}...${N}"
+# ---- 5. configure the installed system ------------------------------------
+write_fstab() {
+    local root_uuid esp_uuid
+    root_uuid="$(blkid -s UUID -o value "$ROOT_PART" 2>/dev/null || true)"
+    esp_uuid="$(blkid -s UUID -o value "$ESP_PART" 2>/dev/null || true)"
 
-  local target="${ROOT_MOUNT:-mnt}"
+    {
+        echo "# PikaOS v2 fstab"
+        echo "UUID=${root_uuid:-ROOT-UUID}  /          ext4  defaults,noatime  0 1"
+        echo "UUID=${esp_uuid:-ESP-UUID}    /boot/efi  vfat  umask=0077        0 1"
+        echo "tmpfs  /tmp  tmpfs  defaults,nosuid,nodev,size=2G  0 0"
+        if [ "$SWAP_SIZE" != 0 ] && [ -n "$SWAP_SIZE" ]; then
+            echo "/swapfile  none  swap  sw  0 0"
+        fi
+    } | emit "$TARGET/etc/fstab"
+    ok "fstab written"
+}
 
-  # fstab
-  cat > "${target}/etc/fstab" <<EOF
-# PikaOS v2 fstab
-UUID=$(blkid -s UUID -o value "$ROOT_PART")  /      ext4  defaults,noatime  0 1
-UUID=$(blkid -s UUID -o value "$ESP_PART")   /boot/efi vfat umask=0077      0 1
-tmpfs  /tmp  tmpfs  defaults,nosuid,nodev,size=2G  0 0
+configure_target() {
+    say "${B}Configuring the installed system...${N}"
+
+    # hostname / hosts / timezone (never touched under dry-run)
+    if [ "$DRYRUN" != 1 ]; then
+        printf '%s\n' "$HOSTNAME_TARGET" > "$TARGET/etc/hostname"
+        sed -i -e '/^127\.0\.1\.1/d' "$TARGET/etc/hosts" 2>/dev/null || true
+        printf '127.0.1.1\t%s\n' "$HOSTNAME_TARGET" >> "$TARGET/etc/hosts"
+        printf '%s\n' "$TIMEZONE" > "$TARGET/etc/timezone"
+    fi
+
+    # fresh machine-id for the installed system
+    run rm -f "$TARGET/etc/machine-id"
+    run chroot "$TARGET" systemd-machine-id-setup
+    run ln -sf "/usr/share/zoneinfo/$TIMEZONE" "$TARGET/etc/localtime"
+
+    # apt: Debian sid + the PikaOS-v2 flat repository
+    emit "$TARGET/etc/apt/sources.list" <<EOF
+deb $DEBIAN_MIRROR $DEBIAN_SUITE main contrib non-free non-free-firmware
 EOF
-  ok "fstab written"
+    run mkdir -p "$TARGET/etc/apt/sources.list.d"
+    emit "$TARGET/etc/apt/sources.list.d/pikaos-v2.list" <<EOF
+# PikaOS v2 packages (flat, un-signed repository).
+# Keep this line so the installed system receives PikaOS-v2 updates.
+deb [trusted=yes] $PIKA_V2_REPO_URL ./
+EOF
+    ok "apt sources configured (Debian $DEBIAN_SUITE + PikaOS v2)"
 
-  # Prefer UEFI when the machine booted in UEFI mode; fall back to BIOS/MBR.
-  if [ -d /sys/firmware/efi ]; then
-    say "  firmware: UEFI -> grub-efi-amd64"
-    chroot "$target" grub-install \
-      --target=x86_64-efi \
-      --efi-directory=/boot/efi \
-      --bootloader-id=PikaOS_v2 \
-      --recheck >/dev/null 2>&1 \
-      || { warn "grub-install (EFI) failed"; return 1; }
-  else
-    say "  firmware: BIOS -> grub-pc (MBR)"
-    chroot "$target" grub-install \
-      --target=i386-pc \
-      --recheck "$DISK" >/dev/null 2>&1 \
-      || { warn "grub-install (BIOS) failed"; return 1; }
-  fi
-  ok "grub installed"
+    # a saner booster config for a normal root boot (no live hooks)
+    run mkdir -p "$TARGET/etc"
+    emit "$TARGET/etc/booster.yaml" <<'EOF'
+# PikaOS v2 installed system.
+vconsole: false
+extra_files: busybox
+enable_lvm: false
+universal: false
+enable_hooks: false
+enable_plymouth: false
+EOF
 
-  chroot "$target" update-grub >/dev/null 2>&1 || warn "update-grub reported problems"
-  ok "boot menu generated"
+    # remove the live session's convenience autologins and passwordless sudo
+    run rm -f "$TARGET"/etc/sudoers.d/live-*
+    run rm -f "$TARGET"/etc/systemd/system/getty@tty1.service.d/autologin.conf
+    run rm -f "$TARGET"/etc/sddm.conf.d/10-pika-live.conf
+    run rm -f "$TARGET"/etc/lightdm/lightdm.conf.d/*pika-live*.conf
+    run rm -rf "$TARGET/etc/systemd/system/getty@tty1.service.d"
+    ok "live-session autologin / NOPASSWD removed"
+
+    # GRUB defaults
+    run mkdir -p "$TARGET/etc/default"
+    emit "$TARGET/etc/default/grub" <<'EOF'
+GRUB_DEFAULT=0
+GRUB_TIMEOUT=5
+GRUB_DISTRIBUTOR="PikaOS v2"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+GRUB_CMDLINE_LINUX=""
+GRUB_DISABLE_OS_PROBER=false
+EOF
+
+    # primary user
+    local existing=0
+    if [ "$DRYRUN" != 1 ] && chroot "$TARGET" id -u "$USERNAME" >/dev/null 2>&1; then
+        existing=1
+    fi
+    if [ "$existing" = 0 ]; then
+        run chroot "$TARGET" useradd -m -s /bin/bash -c "$USER_GECOS" -G sudo "$USERNAME" \
+            || warn "useradd reported a problem for $USERNAME"
+    else
+        run chroot "$TARGET" usermod -s /bin/bash -c "$USER_GECOS" "$USERNAME" || true
+    fi
+    for g in adm cdrom sudo audio video render dip plugdev input lpadmin netdev; do
+        run chroot "$TARGET" usermod -aG "$g" "$USERNAME" || true
+    done
+    if [ -n "${USER_PASSWORD:-}" ]; then
+        if [ "$DRYRUN" = 1 ]; then
+            printf '  %s[dry-run]%s set password for %s\n' "$Y" "$N" "$USERNAME" >&2
+        else
+            printf '%s:%s\n' "$USERNAME" "$USER_PASSWORD" | chroot "$TARGET" chpasswd
+        fi
+    else
+        die "USER_PASSWORD is required (set it or use the interactive prompt)"
+    fi
+
+    # make sure the live user cannot log in if a different name was chosen
+    if [ "$USERNAME" != "pikaos" ] && [ "$DRYRUN" != 1 ]; then
+        chroot "$TARGET" usermod -L pikaos 2>/dev/null || true
+    fi
+
+    # permanent swapfile for a normal desktop experience
+    if [ "$SWAP_SIZE" != 0 ] && [ -n "$SWAP_SIZE" ]; then
+        run chroot "$TARGET" fallocate -l "$SWAP_SIZE" /swapfile
+        run chroot "$TARGET" chmod 600 /swapfile
+        run chroot "$TARGET" mkswap /swapfile
+    fi
+
+    # services a normal install wants
+    run chroot "$TARGET" systemctl enable NetworkManager.service || warn "NetworkManager enable failed"
+    run chroot "$TARGET" systemctl enable systemd-timesyncd.service || warn "timesyncd enable failed"
+    run chroot "$TARGET" systemctl set-default graphical.target || true
+    ok "user, swap and services configured"
+    say ""
 }
 
-# ---- 6. finish -------------------------------------------------------------
+# ---- 6. bootloader: GRUB (never rEFInd) ----------------------------------
+install_grub() {
+    say "${B}Installing ${BOOTLOADER}...${N}"
+
+    if [ -d /sys/firmware/efi ]; then
+        say "  firmware: UEFI -> grub-efi-amd64"
+        run chroot "$TARGET" grub-install \
+            --target=x86_64-efi \
+            --efi-directory="$ESP_MOUNTPOINT" \
+            --bootloader-id=PikaOS_v2 \
+            --recheck
+        # Also drop the removable fallback path (EFI/BOOT/BOOTX64.EFI) so the
+        # machine still boots if its NVRAM entry is lost.
+        run chroot "$TARGET" grub-install \
+            --target=x86_64-efi \
+            --efi-directory="$ESP_MOUNTPOINT" \
+            --removable \
+            --recheck
+    else
+        say "  firmware: BIOS -> grub-pc (MBR)"
+        run chroot "$TARGET" grub-install --target=i386-pc --recheck "$DISK"
+    fi
+
+    run chroot "$TARGET" update-grub
+    ok "boot menu generated"
+    say ""
+}
+
+# ---- 7. finish -------------------------------------------------------------
 finish_install() {
-  local target="${ROOT_MOUNT:-mnt}"
-  say ""
-  say "${B}Finalising...${N}"
+    say "${B}Finalising...${N}"
 
-  # Remove the live-session leftovers from the installed system.
-  rm -rf "${target}/live" "${target}/cdrom" "${target}/.wget-hsts" || true
-  rm -f  "${target}/etc/fstab"~
-  chroot "$target" update-initramfs -u -k all >/dev/null 2>&1 || warn "initramfs update reported problems"
+    # Remove live-only leftovers from the target.
+    run rm -rf "$TARGET/live" "$TARGET/cdrom" "$TARGET/.wget-hsts"
+    run rm -f  "$TARGET/etc/fstab~"
 
-  # Detach.
-  sync
-  umount "${target}/boot/efi" 2>/dev/null || true
-  umount "$target" 2>/dev/null || true
+    run chroot "$TARGET" update-initramfs -u -k all || warn "initramfs update reported problems"
 
-  say ""
-  ok "PikaOS v2 installed successfully."
-  say ""
-  say "  Bootloader : ${BOOTLOADER} (${B}${G}not rEFInd${N})"
-  say "  Target     : ${TARGET_ARCH}"
-  say ""
-  say "  Remove the live USB and reboot."
-  say ""
+    sync
+    umount_all
+    MOUNTS=()
+
+    say ""
+    ok "PikaOS v2 installed successfully."
+    say ""
+    say "  Bootloader : ${BOOTLOADER} (${B}${G}not rEFInd${N})"
+    say "  Target     : ${TARGET_ARCH}"
+    say "  User       : ${USERNAME}"
+    say "  Updates    : Debian ${DEBIAN_SUITE} + ${PIKA_V2_REPO_URL}"
+    say ""
+    say "  Remove the live USB and reboot."
+    say ""
 }
 
 # ---- main ------------------------------------------------------------------
 main() {
-  require_root
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --disk)     DISK="${2:?--disk needs a value}"; shift ;;
+            --hostname) HOSTNAME_TARGET="${2:?}"; shift ;;
+            --user)     USERNAME="${2:?}"; shift ;;
+            --timezone) TIMEZONE="${2:?}"; shift ;;
+            --swap)     SWAP_SIZE="${2:?}"; shift ;;
+            --auto)     AUTO=1 ;;
+            --yes)      FORCE=1 ;;
+            --dry-run)  DRYRUN=1 ;;
+            -h|--help)  usage; exit 0 ;;
+            *)          die "unknown argument: $1 (try --help)" ;;
+        esac
+        shift
+    done
 
-  say ""
-  say "${B}  PikaOS v2 installer${N}"
-  say "  ${B}${TARGET_ARCH}${N} build, ${BOOTLOADER} bootloader"
-  say ""
+    require_root
 
-  check_cpu_level      # <- microarchitecture compatibility gate
-  choose_disk
-  partition_disk
-  format_esp
-  copy_system
-  install_grub
-  finish_install
+    say ""
+    say "${B}  PikaOS v2 installer${N}"
+    say "  ${B}${TARGET_ARCH}${N} build, ${BOOTLOADER} bootloader"
+    [ "$DRYRUN" = 1 ] && say "  ${Y}dry-run: nothing will be modified${N}"
+    say ""
+
+    # Interactive password prompt when not supplied.
+    if [ -z "${USER_PASSWORD:-}" ] && [ "$AUTO" != 1 ]; then
+        local p1 p2
+        read -r -s -p "  Password for ${USERNAME}: " p1 || p1=""
+        say ""
+        read -r -s -p "  Confirm password: " p2 || p2=""
+        say ""
+        [ -n "$p1" ] || die "password must not be empty"
+        [ "$p1" = "$p2" ] || die "passwords do not match"
+        USER_PASSWORD="$p1"
+    fi
+
+    check_cpu_level
+    choose_disk
+    partition_disk
+    format_parts
+    mount_target
+    copy_system
+    write_fstab
+    configure_target
+    install_grub
+    finish_install
 }
 
 main "$@"
