@@ -1,5 +1,0 @@
-upstream-name (1.0-101pika1) pika; urgency=medium
-
-  * Initial release. (Closes: #nnnn)  <nnnn is the bug number of your ITP>
-
- -- ferreo <harderthanfire@gmail.com>  Wed, 18 Jan 2023 21:48:14 +0000

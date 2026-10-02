@@ -223,10 +223,14 @@ jobs:
           fi
           # Every sources.list we write must be plain Debian sid. MIRROR/SECURITY are
           # shell variables defined to deb.debian.org, so allow those tokens.
+          # Allow a shell variable as the authority (the installer resolves
+          # MIRROR to deb.debian.org and PIKA_V2_REPO_URL to the Pages repo at
+          # run time) and the deliberate deb-multimedia. Everything else must
+          # be plain deb.debian.org.
           grep -rhE '^[[:space:]]*deb ' config/pika-install iso-v2/*.sh iso-v2/config/*.sh \
             | grep -v 'deb.debian.org' \
             | grep -v 'deb-multimedia.org' \
-            | grep -vE '\$\{?(MIRROR|SECURITY)\}?' && {
+            | grep -vE '^[[:space:]]*deb (.+\[[^]]*\][[:space:]]+)?[$]\{?[A-Za-z_]' && {
             echo "::error::a sources.list entry points somewhere unexpected"
             exit 1
           }

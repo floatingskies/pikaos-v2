@@ -1,7 +1,0 @@
-#! /bin/bash
-KVANTUM_THEME_DARK=Orchis-dark#
-KVANTUM_THEME_LIGHT=Orchis#
-GTK_THEME_DARK=$(dconf read /org/gnome/desktop/interface/gtk-theme | sed "s+'++" | sed "s+'++" | sed "s+-Dark++" | sed "s+-Light++")-Dark
-GTK_THEME_LIGHT=$(dconf read /org/gnome/desktop/interface/gtk-theme | sed "s+'++" | sed "s+'++" | sed "s+-Dark++" | sed "s+-Light++")-Light
-GTK_THEME_PATH_DARK=/usr/share/themes/$GTK_THEME_DARK
-GTK_THEME_PATH_LIGHT=/usr/share/themes/$GTK_THEME_LIGHT

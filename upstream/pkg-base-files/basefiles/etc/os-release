@@ -1,9 +1,0 @@
-NAME="PikaOS"
-VERSION="3"
-ID=pika
-ID_LIKE="ubuntu debian"
-PRETTY_NAME="PikaOS Linux 3"
-VERSION_ID="3"
-VERSION_CODENAME=devel
-UBUNTU_CODENAME=devel
-LOGO=pika-logo
