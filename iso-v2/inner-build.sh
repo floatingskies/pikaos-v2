@@ -24,8 +24,8 @@ log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 die() { printf '\033[1;31m!!! %s\033[0m\n' "$*" >&2; exit 1; }
 
 case "$MODE" in
-    minimal) PKGS="$BASE_PKGS $INSTALLER_PKGS" ;;
-    full)    PKGS="$BASE_PKGS $INSTALLER_PKGS $FIRMWARE_PKGS $DESKTOP_PKGS $PIKA_PKGS" ;;
+    minimal) PKGS="$BASE_PKGS $INSTALLER_PKGS $CODEC_PKGS" ;;
+    full)    PKGS="$BASE_PKGS $INSTALLER_PKGS $FIRMWARE_PKGS $DESKTOP_PKGS $CODEC_PKGS $PIKA_PKGS" ;;
     *)       die "unknown MODE '$MODE' (use minimal|full)" ;;
 esac
 
@@ -92,6 +92,24 @@ rm -f "$ROOTFS_PATH"/etc/apt/sources.list.d/*
 cat > "$ROOTFS_PATH/etc/apt/sources.list" <<EOF
 deb http://deb.debian.org/debian sid main contrib non-free non-free-firmware
 deb [trusted=yes] file:$REPO_MNT ./
+EOF
+
+# deb-multimedia: unofficial, but the only source of libdvdcss2 on amd64, which
+# is why PikaOS ships it too. Note it does NOT provide the patition-free codecs
+# (there is no w64codecs); those are not redistributable and Debian sid's own
+# gstreamer1.0-plugins/libav cover playback.
+log "adding deb-multimedia (keyring pinned, then verified by apt)"
+DM_KEYRING_URL="https://deb-multimedia.org/pool/main/d/deb-multimedia-keyring/deb-multimedia-keyring_2024.9.1_all.deb"
+if curl -fsSL --retry 3 -o /tmp/deb-multimedia-keyring.deb "$DM_KEYRING_URL"; then
+    install -Dm0644 /tmp/deb-multimedia-keyring.deb "$ROOTFS_PATH/tmp/deb-multimedia-keyring.deb"
+    chroot "$ROOTFS_PATH" dpkg -i /tmp/deb-multimedia-keyring.deb >/dev/null
+    rm -f "$ROOTFS_PATH/tmp/deb-multimedia-keyring.deb" /tmp/deb-multimedia-keyring.deb
+else
+    die "could not fetch the deb-multimedia keyring ($DM_KEYRING_URL)"
+fi
+cat > "$ROOTFS_PATH/etc/apt/sources.list.d/deb-multimedia.list" <<EOF
+# PikaOS ships this too: libdvdcss2 (DVD) is only packaged there for amd64.
+deb http://deb-multimedia.org/ sid main
 EOF
 
 # The v2 repo ships PikaOS' own desktop-base (branding, active-theme), which

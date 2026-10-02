@@ -111,10 +111,16 @@ for my $file (@files) {
                 push @candidates, $rest2 if length $rest2;
 
                 for my $cand (@candidates) {
-                    if ($cand =~ /^([A-Za-z0-9][A-Za-z0-9+.-]*)/) {
-                        my $name = $1;
-                        if (exists $shim{$name}) {
-                            my $action = $shim{$name};
+                    if ($cand =~ /^([A-Za-z0-9][A-Za-z0-9+.-]*)((?::[A-Za-z0-9]+)*)/) {
+                        my ($name, $quals) = ($1, $2);
+                        # A multi-arch qualifier is part of the lookup key
+                        # ("libavcodec61:i386" is not "libavcodec61"), so a
+                        # shim can drop the i386 half and keep the amd64 one.
+                        my $key = length $quals ? "$name$quals" : $name;
+                        $key = $name unless exists $shim{$key};
+                        $name = $key if exists $shim{$key};
+                        if (exists $shim{$key}) {
+                            my $action = $shim{$key};
                             if ($action eq '-') {
                                 $dropped++;
                                 next;

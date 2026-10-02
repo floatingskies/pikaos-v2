@@ -59,6 +59,16 @@ intel-microcode
 amd64-microcode
 "
 
+# Codecs. The DVD half comes from deb-multimedia (added in inner-build.sh),
+# since libdvdcss2 is not packaged for Debian amd64. Playback of the usual
+# formats is covered by Debian's own ffmpeg/gstreamer packages.
+export CODEC_PKGS="
+libdvdcss2 gstreamer1.0-libav gstreamer1.0-plugins-bad
+gstreamer1.0-plugins-ugly gstreamer1.0-plugins-good
+libavcodec-extra
+handbrake-gtk
+"
+
 export DESKTOP_PKGS="
 kde-plasma-desktop sddm
 sddm-theme-debian-breeze
