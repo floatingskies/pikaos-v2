@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # PikaOS-v2 :: build driver
 #
 #   ./build.sh bootstrap     -> chroot only

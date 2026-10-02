@@ -54,7 +54,7 @@ live-boot live-config live-boot-initramfs-tools initramfs-tools
 # mkinitramfs silently produces a 0-byte main archive: the initrd ends up
 # containing only the early microcode cpio, with no /init, no scripts/ and no
 # live-boot, so the kernel can never mount the squashfs. It was masked by
-# "update-initramfs ... || true". Install it explicitly and assert on it.
+# update-initramfs being allowed to fail. Install it explicitly and assert on it.
 cpio zstd
 sudo locales keyboard-configuration console-setup
 plymouth
