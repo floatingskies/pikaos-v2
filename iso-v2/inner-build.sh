@@ -184,14 +184,19 @@ mkdir -p "$GRUB_TMP/EFI/BOOT"
 cp -f "$ROOTFS_PATH/boot/vmlinuz-$ISO_KERNEL"    "$GRUB_TMP/EFI/vmlinuz"
 cp -f "$ROOTFS_PATH/boot/initrd.img-$ISO_KERNEL" "$GRUB_TMP/EFI/initrd"
 
-# Render grub.cfg and embed it inside a standalone EFI binary, so the ESP needs
+# Copy grub.cfg and embed it inside a standalone EFI binary, so the ESP needs
 # no separate config file: grub-mkstandalone places it at boot/grub/grub.cfg.
 # Only grub.cfg goes in the memdisk: kernel and initrd stay as real files in the
 # ISO tree. A standalone image carrying the kernel too would exceed the 65535
 # block El Torito limit (65535 * 512 = 32 MiB), and xorriso then records a load
 # size of 0, which the firmware refuses ("could not read from cdrom").
+#
+# This binary is the ESP's /EFI/BOOT/BOOTX64.EFI, which is also how firmware with
+# no El Torito support boots the image (by mounting the ESP). data/grub/grub.cfg
+# locates the ISO9660 medium by file, so the kernel is found on either path.
 cp -f "$GRUB_DATA/grub.cfg" "$GRUB_TMP/grub.cfg"
 sed -i "s#THE_NAME_OF_CURRENT_ISO_FOR_VENTOY#$ISO_IMAGE.iso#g" "$GRUB_TMP/grub.cfg"
+sed -i "s#__ISO_LABEL__#$ISO_LABEL#g" "$GRUB_TMP/grub.cfg"
 grub-mkstandalone \
     --format=x86_64-efi \
     --output="$GRUB_TMP/EFI/BOOT/BOOTX64.EFI" \
@@ -255,7 +260,7 @@ xorriso \
     -appended_part_as_gpt \
     -no-pad \
     -no-emul-boot \
-    -append_partition 2 0xef "$EFIBOOT_IMG" \
+    -append_partition 1 0xef "$EFIBOOT_IMG" \
     -e EFI/BOOT/BOOTX64.EFI \
     -o "$ISO_OUTPUT" \
     "$LIVE_BOOT_DATA_PATH"
