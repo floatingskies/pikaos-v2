@@ -21,14 +21,17 @@ boot-packages/refind-btrfs
 # meta packages
 meta-packages/pika-audio
 meta-packages/pika-baseos
-meta-packages/pika-meta
+# pika-meta: upstream debian/control has malformed Depends
+# (e.g. "mesa-vulkan-drivers:i386 mesa-vulkan-drivers" with no comma).
+# meta-packages/pika-meta
 
 # KDE desktop
 kde-packages/pika-kde-desktop
 kde-packages/pika-kde-settings
 kde-packages/kio-admin
 kde-packages/papirus-colors
-kde-packages/akondi-mime5
+# akondi-mime5: Build-Depends libkf5akonadi-dev (KF5), dropped from sid (KF6 only).
+# kde-packages/akondi-mime5
 kde-packages/supergfxctl-plasmoid
 
 # Pika GUI applications
@@ -43,29 +46,35 @@ custom-gui-packages/pika-installer-gtk4
 
 # Pika applications / desktop integration (from general-packages)
 general-packages/pikman
-general-packages/pikainstall
-general-packages/pikafetch
 general-packages/falcon
-general-packages/falcond
 general-packages/pika-sources
 general-packages/pika-wallpapers
 general-packages/pika-lightdm
 general-packages/pika-shell-profiles
 general-packages/pika-apx-configs
-general-packages/pika-paste
-general-packages/pika-pkg-template
-general-packages/pikd-pharser-rs
 general-packages/sound-theme-pika
 general-packages/desktop-base
 general-packages/base-files
 general-packages/pam-any
 general-packages/pam-parallel
 general-packages/apx
-general-packages/apx-gui
 general-packages/popsicle
-general-packages/pwvucontrol
 general-packages/dmemcg-booster
 general-packages/apt-btrfs-snapper
 general-packages/ananicy-cpp
 general-packages/ananicy-rules
 general-packages/tuned
+
+# Not buildable against plain Debian sid yet (TODO before enabling):
+#   zig not packaged in sid:        pikainstall, pikafetch, falcond, pika-paste
+#   appstream-util removed in sid:  pwvucontrol
+#   upstream source/control bugs:   pika-pkg-template (placeholder Maintainer),
+#     pikd-pharser-rs (repo ships no main.sh), apx-gui (conflicting Source field)
+# general-packages/pikainstall
+# general-packages/pikafetch
+# general-packages/falcond
+# general-packages/pika-paste
+# general-packages/pwvucontrol
+# general-packages/pika-pkg-template
+# general-packages/pikd-pharser-rs
+# general-packages/apx-gui

@@ -52,6 +52,13 @@ fetch_source() {
   cp "$HERE/build-config/amd64-v2.sh" "$dst/pika-build-config.sh"
   mkdir -p "$dst/pika-build-config"
   cp "$HERE/build-config/amd64-v2.sh" "$dst/pika-build-config/amd64-v2.sh"
+
+  # PikaOS' changelog bot stamps signoff trailers in "GMT"/"UTC"; the newer
+  # Debian sid changelog parser rejects those ("Could not parse timestamp ...
+  # signoff date"). Rewrite them to a numeric offset before dh_* reads the file.
+  while IFS= read -r cl; do
+    sed -i -E 's/^( -- .*) (GMT|UTC)[[:space:]]*$/\1 +0000/' "$cl"
+  done < <(find "$dst" -path '*/debian/changelog' -type f)
 }
 
 run_build() {
