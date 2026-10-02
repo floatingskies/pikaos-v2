@@ -70,17 +70,22 @@ systemsettings kwin-x11 xserver-xorg xserver-xorg-video-all xserver-xorg-input-a
 # x86-64-v2 and installed from the local v2 repo (see v2/ci/packages.tsv for the
 # fleet and why some entries are parked).
 #
-# pika-installer-gtk4 is deliberately absent: iso-v2/inner-build.sh stages the
+# This is the *buildable against plain Debian sid* subset: packages whose Depends
+# chain only needs sid are included. Several PikaOS packages are deliberately
+# absent because they depend on KF5/otter/pik-only helpers that sid no longer
+# ships (pika-kde-desktop, pika-shell-profile-*, pika-kernel-manager,
+# pika-device-manager, pika-welcome, pika-first-setup-gtk4, plymouth-theme-pika,
+# pikman-update-manager, plasma-supergfxctl, falcond-gui). Those still build as
+# standalone v2 debs; they are just not part of the full ISO recipe until their
+# dependency closure is ported to KF6/sid.
+#
+# pika-installer-gtk4 is absent on purpose: iso-v2/inner-build.sh stages the
 # in-tree config/pika-install as /usr/bin/pika-install plus its own launcher and
 # polkit rule, and the GTK4 helper would shadow it.
 export PIKA_PKGS="
-pika-wallpapers sound-theme-pika papirus-colors plymouth-theme-pika
-pika-kde-desktop pika-kde-settings plasma-supergfxctl kio-admin
-pika-shell-profile-common pika-shell-profile-otter
-pikman pikman-update-manager apx popsicle-gtk falcond-gui
-pika-kernel-manager pika-drivers pika-device-manager
-pika-first-setup-gtk4 pika-welcome
-pika-sources
+pika-wallpapers papirus-colors
+pika-kde-settings kio-admin
+pikman apx popsicle-gtk pika-sources
 "
 
 # Installer + offline tooling. The installed system is produced by rsyncing the
