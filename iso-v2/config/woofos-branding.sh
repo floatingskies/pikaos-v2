@@ -38,7 +38,9 @@ BUG_REPORT_URL="https://github.com/floatingskies/pikaos-v2/issues"
 ANSI_COLOR="1;34"
 LOGO=$DISTRO_ID-logo
 EOF
-ln -sf /etc/os-release /usr/lib/os-release
+# On Debian /usr/lib/os-release already points at /etc/os-release, and ln
+# refuses when they are the same file -- which aborted the whole script.
+[ -e /usr/lib/os-release ] || ln -sf /etc/os-release /usr/lib/os-release
 
 # ---------------------------------------------------------------------------
 # 2. about logo and default wallpaper
@@ -62,14 +64,85 @@ fi
 mkdir -p /etc/xdg/kcm
 cat > /etc/xdg/kcm/kcm_aboutrc <<'KCMEOF'
 [About]
-distributorLogo=/usr/share/woofos/branding/logo.png
+distributorLogo=/usr/share/pixmaps/woofos-logo.png
 KCMEOF
 for f in /etc/kdeglobals /etc/xdg/kdeglobals; do
     [ -f "$f" ] || continue
     if grep -q '^\[KDE\]' "$f"; then
-        sed -i '/^\[KDE\]/a distributorLogo=/usr/share/woofos/branding/logo.png' "$f"
+        sed -i '/^\[KDE\]/a distributorLogo=/usr/share/pixmaps/woofos-logo.png' "$f"
     fi
 done
+
+# ---------------------------------------------------------------------------
+# 2b. wallpaper as a real KDE wallpaper package
+#
+# A loose .jpg in /usr/share/backgrounds is invisible to Desktop Settings, which
+# only lists wallpapers under /usr/share/wallpapers/<name>/contents with a
+# metadata.json. Build that layout so the mascot's wallpaper shows up in the
+# chooser.
+# ---------------------------------------------------------------------------
+log "registering the wallpaper in the KDE collection"
+mkdir -p /usr/share/wallpapers/woofos/contents/files
+for bg in /usr/share/backgrounds/woof*; do
+    [ -f "$bg" ] || continue
+    base="$(basename "$bg")"
+    # keep the name stable and free of spaces inside the package
+    clean="$(printf '%s' "$base" | tr ' ' '-' | tr '[:upper:]' '[:lower:]')"
+    cp -f "$bg" "/usr/share/wallpapers/woofos/contents/files/$clean"
+    MAINFILE="$clean"
+    break
+done
+if [ -n "${MAINFILE:-}" ]; then
+    cat > /usr/share/wallpapers/woofos/contents/metadata.json <<JSONEOF
+{
+    "KPlugin": {
+        "Id": "woofos",
+        "Name": "WoofOS",
+        "PreviewImage": "thumbnails/$MAINFILE"
+    },
+    "X-KDE-PackageName": "WoofOS",
+    "X-KDE-PackageName[pt_BR]": "WoofOS"
+}
+JSONEOF
+    # Plasma shows this name in the wallpaper chooser.
+    install -d /usr/share/wallpapers/woofos/contents/thumbnails
+    cp -f "/usr/share/wallpapers/woofos/contents/files/$MAINFILE" \
+          "/usr/share/wallpapers/woofos/contents/thumbnails/$MAINFILE"
+fi
+
+# ---------------------------------------------------------------------------
+# 2c. plymouth theme carrying the logo
+#
+# plymouth-theme-pika ships PikaOS' artwork; this adds a WoofOS theme that uses
+# the distributor's own logo instead. plymouth can only blit a bitmap, so the
+# PNG is used directly.
+# ---------------------------------------------------------------------------
+if [ -f /usr/share/pixmaps/woofos-logo.png ] && [ -d /usr/share/plymouth ]; then
+    log "installing the WoofOS plymouth theme"
+    mkdir -p /usr/share/plymouth/themes/woofos
+    cp -f /usr/share/pixmaps/woofos-logo.png /usr/share/plymouth/themes/woofos/logo.png
+    cat > /usr/share/plymouth/themes/woofos/woofos.script <<'PLEOF'
+# WoofOS v2 plymouth theme: the distributor logo on the default background.
+Logo.SetImage("logo.png");
+Logo.SetImageProgress(0.0);
+
+for (i = 0; i < 200; i++) {
+    progress = i * 0.005;
+    Logo.SetImageProgress(progress);
+    refresh();
+    sleep(0.02);
+}
+
+Logo.SetImageProgress(1.0);
+PLEOF
+    install -d /etc/plymouth
+    if [ -f /etc/plymouth/plymouthd.conf ]; then
+        sed -i 's/^Theme=.*/Theme=woofos/' /etc/plymouth/plymouthd.conf
+    else
+        printf 'Theme=woofos\n' > /etc/plymouth/plymouthd.conf
+    fi
+    command -v update-plymouth >/dev/null 2>&1 && update-plymouth --text-only 2>/dev/null || true
+fi
 
 # ---------------------------------------------------------------------------
 # 3. apt behaviour

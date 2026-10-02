@@ -160,6 +160,11 @@ install -d "$ROOTFS_PATH/usr/share/woofos/branding" "$ROOTFS_PATH/usr/share/back
 for art in "$ROOT"/branding/*; do
     [ -f "$art" ] && install -Dm0644 "$art" "$ROOTFS_PATH/usr/share/woofos/branding/$(basename "$art")"
 done
+# Stable name for the branding script, whatever the artwork is called upstream.
+if [ -f "$ROOTFS_PATH/usr/share/woofos/branding/woofos-logo.png" ]; then
+    cp -f "$ROOTFS_PATH/usr/share/woofos/branding/woofos-logo.png" \
+          "$ROOTFS_PATH/usr/share/woofos/branding/logo.png"
+fi
 for art in "$ROOT"/"custom wallpaper"/*; do
     [ -f "$art" ] && install -Dm0644 "$art" "$ROOTFS_PATH/usr/share/backgrounds/$(basename "$art")"
 done
