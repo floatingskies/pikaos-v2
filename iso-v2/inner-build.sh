@@ -48,13 +48,20 @@ trap umount_all EXIT
 # ---------------------------------------------------------------------------
 log "indexing local v2 repo: $V2_REPO"
 [ -d "$V2_REPO/pool/main" ] || die "no v2 packages in $V2_REPO/pool/main (run ../v2/pkg-build.sh first)"
-(
-    cd "$V2_REPO"
-    rm -f Packages Packages.gz
-    dpkg-scanpackages --multiversion pool/main /dev/null > Packages 2>/dev/null
-    gzip -kf Packages
-)
 ls "$V2_REPO"/pool/main/*.deb >/dev/null 2>&1 || die "v2 repo has no .deb files"
+# v2/ci/repo-index.sh already produced a self-consistent Packages/Packages.gz/
+# Release set (Release carries the checksums apt verifies). Regenerating here
+# with a different gzip level would change Packages.gz and make apt reject the
+# Release hashes ("Hash Sum mismatch"), so only build the index when missing.
+if [ ! -s "$V2_REPO/Packages" ] || [ ! -s "$V2_REPO/Packages.gz" ]; then
+    log "no prebuilt index in $V2_REPO; generating one"
+    (
+        cd "$V2_REPO"
+        rm -f Packages Packages.gz Release
+        dpkg-scanpackages --multiversion pool/main /dev/null > Packages 2>/dev/null
+        gzip -9 -kf Packages
+    )
+fi
 
 # ---------------------------------------------------------------------------
 # 1. bootstrap a minimal Debian sid rootfs
