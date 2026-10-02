@@ -66,6 +66,23 @@ konsole dolphin plasma-nm plasma-pa kde-config-gtk-style
 systemsettings kwin-x11 xserver-xorg xserver-xorg-video-all xserver-xorg-input-all
 "
 
+# PikaOS branding, KDE customisations and the PikaOS tool suite, all rebuilt for
+# x86-64-v2 and installed from the local v2 repo (see v2/ci/packages.tsv for the
+# fleet and why some entries are parked).
+#
+# pika-installer-gtk4 is deliberately absent: iso-v2/inner-build.sh stages the
+# in-tree config/pika-install as /usr/bin/pika-install plus its own launcher and
+# polkit rule, and the GTK4 helper would shadow it.
+export PIKA_PKGS="
+pika-wallpapers sound-theme-pika papirus-colors plymouth-theme-pika
+pika-kde-desktop pika-kde-settings plasma-supergfxctl kio-admin
+pika-shell-profile-common pika-shell-profile-otter
+pikman pikman-update-manager apx popsicle-gtk falcond-gui
+pika-kernel-manager pika-drivers pika-device-manager
+pika-first-setup-gtk4 pika-welcome
+pika-sources
+"
+
 # Installer + offline tooling. The installed system is produced by rsyncing the
 # live rootfs, so these packages end up both on the ISO and in the target:
 # partitioning (gdisk/parted/dosfstools), GRUB (common + both platforms),

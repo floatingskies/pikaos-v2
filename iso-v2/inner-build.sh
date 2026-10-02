@@ -25,7 +25,7 @@ die() { printf '\033[1;31m!!! %s\033[0m\n' "$*" >&2; exit 1; }
 
 case "$MODE" in
     minimal) PKGS="$BASE_PKGS $INSTALLER_PKGS" ;;
-    full)    PKGS="$BASE_PKGS $INSTALLER_PKGS $FIRMWARE_PKGS $DESKTOP_PKGS" ;;
+    full)    PKGS="$BASE_PKGS $INSTALLER_PKGS $FIRMWARE_PKGS $DESKTOP_PKGS $PIKA_PKGS" ;;
     *)       die "unknown MODE '$MODE' (use minimal|full)" ;;
 esac
 
