@@ -1,0 +1,34 @@
+# v2 ISA rewrites applied to a fetched source tree before main.sh runs.
+#
+# Format: <literal-from>|<literal-to>, one per line. '#' comments and blank
+# lines are ignored. These are byte-literal substitutions (no regex), applied
+# to every file under the source tree.
+#
+# Why this exists: pika-build-config/amd64-v2.sh injects the v2 ISA through
+# DEB_CFLAGS_MAINT_APPEND, but a number of PikaOS repos set the target ISA
+# somewhere DEB_CFLAGS_MAINT_APPEND cannot reach -- they either drive their own
+# build backend or hardcode the CPU model. A v3 object left in those files
+# SIGILLs on the Ivy Bridge hardware this image targets, even though every
+# other flag in the build is correctly v2.
+#
+# Keep this list short and specific. A broad "x86-64-v3 -> x86-64-v2" rule would
+# also rewrite comments, docs and upstream test vectors, which is how you end up
+# with a silently mislabelled tree. Each entry below is a real hardcode that was
+# verified to exist in the upstream repo.
+
+# otter-shell: otter-zenith is the aggregator that builds all ~60 otter
+# components (it clones the per-package Zig repos from pins.json and installs
+# them via debian/rules). Its rules pass the Zig CPU model explicitly, so the
+# whole shell would be v3 while the rest of the image is v2.
+-Dcpu=x86_64_v3|-Dcpu=x86_64_v2
+
+# general-packages/zig: the Zig compiler PikaOS ships is itself built for
+# x86_64_v3 by a sed in main.sh. A v3-built zig cannot even be *run* on the
+# target CPU, so this one is a prerequisite for every otter-shell build above,
+# not just an optimisation.
+ZIG_TARGET_MCPU "x86_64_v3"|ZIG_TARGET_MCPU "x86_64_v2"
+
+# kernel-*: scripts/config.sh overrides the shipped .config (which is
+# CONFIG_X86_64_VERSION=1, i.e. baseline) and forces the level at build time.
+# 7.2 and 6.18 use "3"; 6.12 is pinned through the same line.
+--set-val X86_64_VERSION 3|--set-val X86_64_VERSION 2

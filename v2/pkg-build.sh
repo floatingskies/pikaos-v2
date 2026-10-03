@@ -16,6 +16,19 @@ GITBASE="https://git.pika-os.com"
 WORK="$HERE/work"
 REPO="$HERE/repo"
 
+# Container engine. CI has docker; a local host may only have podman, and the
+# original hardcoded `docker` calls died with "command not found" there before
+# touching a single package. Resolve once, honour $CONTAINER_ENGINE.
+if [ -n "${CONTAINER_ENGINE:-}" ]; then
+  ENGINE="$CONTAINER_ENGINE"
+else
+  ENGINE=""
+  for cand in docker podman; do
+    if command -v "$cand" >/dev/null 2>&1; then ENGINE="$cand"; break; fi
+  done
+fi
+[ -n "$ENGINE" ] || { echo "error: no container runtime; install docker or podman, or set CONTAINER_ENGINE" >&2; exit 2; }
+
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
 [ $# -ge 1 ] || { echo "usage: pkg-build.sh <org>/<name> | local:/path" >&2; exit 2; }
@@ -28,14 +41,14 @@ esac
 KEY="${SRC//\//__}"
 
 build_image() {
-  if docker image inspect "$IMAGE" >/dev/null 2>&1; then return; fi
+  if $ENGINE image inspect "$IMAGE" >/dev/null 2>&1; then return; fi
   if [ "${PKG_BUILDER_PULL:-0}" = 1 ]; then
     log "pulling builder image $IMAGE"
-    docker pull "$IMAGE" && return
+    $ENGINE pull "$IMAGE" && return
     log "pull failed; falling back to a local build"
   fi
-  log "building builder image $IMAGE"
-  docker build -t "$IMAGE" "$HERE/builder"
+  log "building builder image $IMAGE with $ENGINE"
+  $ENGINE build -t "$IMAGE" "$HERE/builder"
 }
 
 fetch_source() {
@@ -74,16 +87,50 @@ fetch_source() {
       s/ ([+-]\d{2})\s*$/ ${1}00/ if /^\s*-- /;
     ' "$cl"
   done < <(find "$dst" -path '*/debian/changelog' -type f)
+
+  # Some PikaOS repos hardcode an x86-64 level in a place the injected
+  # build-config cannot reach, because they never read DEB_CFLAGS_MAINT_APPEND:
+  #   otter-zenith/debian/rules  -Dcpu=x86_64_v3   (5x, every Zig build)
+  #   general-packages/zig       ZIG_TARGET_MCPU x86_64_v3 (the toolchain itself)
+  #   kernel-*/scripts/config.sh --set-val X86_64_VERSION 3
+  # Left alone, those emit v3 objects that SIGILL on Ivy Bridge no matter what
+  # amd64-v2.sh says. Rewrite them, and fold the result into the build
+  # fingerprint so a change here invalidates the cached debs.
+  if [ -s "$HERE/ci/isa-shims.txt" ]; then
+    local isa_fixed=0
+    # A file whose last line lacks a trailing newline loses that line to
+    # `read`, which would silently skip a shim (and ship a v3 kernel). Assert
+    # the newline and fail loudly rather than under-apply the ISA.
+    if [ -n "$(tail -c 1 "$HERE/ci/isa-shims.txt")" ]; then
+      echo "ERROR: $HERE/ci/isa-shims.txt has no trailing newline; the last shim would be silently dropped" >&2
+      exit 1
+    fi
+    while IFS= read -r line; do
+      case "$line" in ''|\#*) continue ;; esac
+      local from="${line%%|*}"; local to="${line#*|}"
+      case "$line" in *'|'*) ;; *) echo "ERROR: malformed isa-shim line: $line" >&2; exit 1 ;; esac
+      local hits
+      hits="$(grep -rlF -- "$from" "$dst" 2>/dev/null || true)"
+      [ -n "$hits" ] || continue
+      printf '%s\n' "$hits" | while IFS= read -r f; do
+        perl -i -pe "s/\Q$from\E/$to/g" "$f"
+      done
+      isa_fixed=1
+      log "isa-shim: '$from' -> '$to' in $(printf '%s\n' "$hits" | wc -l) file(s)"
+    done < "$HERE/ci/isa-shims.txt"
+    [ "$isa_fixed" = 1 ] || log "isa-shims: nothing to rewrite in $NAME"
+  fi
 }
 
 run_build() {
   log "building $NAME for x86-64-v2"
-  docker run --rm \
+  $ENGINE run --rm \
     -v "$WORK/$KEY:/work" \
     -w /work \
     -e FORCE_UNSAFE_CONFIGURE=1 \
     -e HOST_UID="$(id -u)" \
     -e HOST_GID="$(id -g)" \
+    -e PIKA_JOBS="${PKG_JOBS:-}" \
     "$IMAGE" bash -c '
       set -e
       export DEBIAN_FRONTEND=noninteractive
@@ -92,9 +139,15 @@ run_build() {
       git config --global --add safe.directory "*"
       # Hand the tree back to the host user even if the build fails.
       trap "chown -R ${HOST_UID}:${HOST_GID} /work" EXIT
-      . ./pika-build-config.sh
-      echo "[v2] PIKA_BUILD_ARCH=$PIKA_BUILD_ARCH"
-      echo "[v2] CFLAGS=$DEB_CFLAGS_MAINT_APPEND"
+      # The kernel packages do not go through pika-build-config.sh at all (they
+      # drive their own scripts/ and a .config), so only source it when present.
+      if [ -f ./pika-build-config.sh ]; then
+        . ./pika-build-config.sh
+        echo "[v2] PIKA_BUILD_ARCH=$PIKA_BUILD_ARCH"
+        echo "[v2] CFLAGS=$DEB_CFLAGS_MAINT_APPEND"
+      else
+        echo "[v2] no pika-build-config.sh; building on upstream defaults"
+      fi
       # The builder image ships no apt lists (they are pruned to keep it slim),
       # so refresh them before main.sh runs apt-get build-dep/source.
       apt-get update
@@ -131,6 +184,9 @@ fingerprint() {
   sha256sum "$HERE/build-config/amd64-v2.sh" | cut -d' ' -f1
   sha256sum "$HERE/ci/dep-shims.tsv" | cut -d' ' -f1
   sha256sum "$HERE/ci/apply-dep-shims.pl" | cut -d' ' -f1
+  # The v3->v2 hardcode rewrites change the build result, so they are part of
+  # the identity of a cached deb just like the flags themselves.
+  sha256sum "$HERE/ci/isa-shims.txt" | cut -d' ' -f1
 }
 
 cache_is_current() {

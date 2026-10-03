@@ -235,6 +235,152 @@ jobs:
           }
           echo "no upstream apt dependency"
 
+  # ---------------------------------------------------------------------
+  # The ISA shim table decides what gets rewritten from v3 to v2 before a
+  # package builds. It is a plain text file, so nothing but these two jobs
+  # stops a typo in it from shipping a v3 binary to an Ivy Bridge CPU -- or,
+  # worse, from silently matching nothing and reporting success.
+  # ---------------------------------------------------------------------
+  isa-shims:
+    name: v3 -> v2 ISA shims are well formed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Every shim is a well-formed from|to pair with a trailing newline
+        run: |
+          set -euo pipefail
+          f=v2/ci/isa-shims.txt
+          [ -s "$f" ] || { echo "::error::$f is empty or missing"; exit 1; }
+
+          # `read` drops a final line with no trailing newline, and this file is
+          # consumed by a while-read loop in pkg-build.sh. A dropped last line
+          # is a silently skipped rewrite, so assert the newline here.
+          if [ -n "$(tail -c 1 "$f")" ]; then
+            echo "::error::$f does not end in a newline; its last shim would be silently dropped"
+            exit 1
+          fi
+
+          n=0
+          while IFS= read -r line || [ -n "$line" ]; do
+            case "$line" in ''|\#*) continue ;; esac
+            n=$((n + 1))
+            case "$line" in
+              *'|'*) ;;
+              *) echo "::error::malformed shim (no '|'): $line"; exit 1 ;;
+            esac
+            from="${line%%|*}"; to="${line#*|}"
+            [ -n "$from" ] || { echo "::error::empty 'from' in: $line"; exit 1; }
+            [ -n "$to" ]   || { echo "::error::empty 'to' in: $line"; exit 1; }
+            # A shim that rewrites v3 into something that is still v3 is a no-op
+            # that looks like it worked.
+            case "$to" in
+              *v3*|*V3*|*mavx2*|*mfma*)
+                echo "::error::shim target still references v3: $line"; exit 1 ;;
+            esac
+            # And a shim whose source is already v2-only would never match.
+            case "$from" in
+              *x86_64_v2*|*march=x86-64-v2*)
+                echo "::error::shim source is already v2; it can never match: $line"; exit 1 ;;
+            esac
+          done < "$f"
+          [ "$n" -gt 0 ] || { echo "::error::no active shims in $f"; exit 1; }
+          echo "$n shim(s), all well formed"
+
+      - name: Every shim source string still exists upstream
+        run: |
+          set -euo pipefail
+          # A shim that no longer matches anything is dead weight that reads as
+          # coverage: if upstream renamed the flag, the v3 target silently comes
+          # back. Require each source string to be found in the repo it targets,
+          # and fail if it is not, so the shim is updated at the same time as
+          # upstream changes.
+          #
+          # repo|path-glob is derived from the shim itself; the mapping is
+          # declared here because a shim has no way to say which repo it is for.
+          declare -A REPO_OF=(
+            ['-Dcpu=x86_64_v3']=otter-shell/otter-zenith
+            ['ZIG_TARGET_MCPU "x86_64_v3"']=general-packages/zig
+            ['--set-val X86_64_VERSION 3']=kernel-packages/linux-pikaos-7.2
+          )
+          missing=0
+          while IFS= read -r line || [ -n "$line" ]; do
+            case "$line" in ''|\#*) continue ;; esac
+            from="${line%%|*}"
+            repo="${REPO_OF[$from]:-}"
+            if [ -z "$repo" ]; then
+              echo "::error::no repo declared for shim source: $from"
+              missing=$((missing + 1))
+              continue
+            fi
+            # git clone, not the archive endpoint: the gitea returns 403 for
+            # /archive/refs/heads/*.tar.gz to an unauthenticated client, so
+            # that version of this check reported every shim as stale.
+            tmp="$(mktemp -d)"
+            if git clone --depth 1 -q "https://git.pika-os.com/$repo.git" "$tmp/r" 2>/dev/null; then
+              if grep -rqF -e "$from" "$tmp/r"; then
+                echo "ok: '$from' present in $repo"
+              else
+                echo "::error::shim source '$from' no longer found in $repo; upstream moved and this would silently stop rewriting"
+                missing=$((missing + 1))
+              fi
+            else
+              # An unreachable repo is not evidence that a shim is stale.
+              echo "::warning::could not clone $repo; skipping the staleness check for '$from'"
+            fi
+            rm -rf "$tmp"
+          done < v2/ci/isa-shims.txt
+          [ "$missing" -eq 0 ] || { echo "::error::$missing shim(s) are stale"; exit 1; }
+
+  fleet-list:
+    name: package fleet list is sane
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No duplicates and no v3 slugs
+        run: |
+          set -euo pipefail
+          mapfile -t all < <(grep -vE '^[[:space:]]*(#|$)' v2/ci/packages.tsv)
+          [ "${#all[@]}" -gt 0 ] || { echo "::error::packages.tsv is empty"; exit 1; }
+
+          dups="$(printf '%s\n' "${all[@]}" | sort | uniq -d)"
+          if [ -n "$dups" ]; then
+            echo "::error::duplicate entries in packages.tsv:"
+            printf '  %s\n' $dups
+            exit 1
+          fi
+
+          # Each entry must be org/name and name must be lowercase-dashed; a
+          # typo here becomes a clone that fails much later, in CI.
+          for p in "${all[@]}"; do
+            case "$p" in
+              */*/*)  echo "::error::malformed slug (too many '/'): $p"; exit 1 ;;
+              */*)    ;;
+              *)      echo "::error::slug without an org: $p"; exit 1 ;;
+            esac
+            name="${p##*/}"
+            case "$name" in
+              [a-z0-9]*) ;;
+              *) echo "::error::unexpected package name '$name' in $p"; exit 1 ;;
+            esac
+          done
+
+          echo "${#all[@]} packages, no duplicates, all slugs well formed"
+
+      - name: Fleet fits inside the Actions matrix limit
+        run: |
+          set -euo pipefail
+          # v2-packages chunks the fleet because a run is capped at 256 jobs.
+          # Keep the chunk size and the fleet in the same file so a future edit
+          # to one cannot quietly break the other.
+          CHUNK="$(grep -oE '^ *CHUNK=[0-9]+' .github/workflows/v2-packages.yml \
+                    | grep -oE '[0-9]+' | head -1)"
+          [ -n "$CHUNK" ] || { echo "::error::could not find CHUNK in v2-packages.yml"; exit 1; }
+          n=$(grep -cvE '^[[:space:]]*(#|$)' v2/ci/packages.tsv)
+          echo "fleet=$n chunk=$CHUNK -> $(( (n + CHUNK - 1) / CHUNK )) job(s)"
+          [ "$CHUNK" -le 256 ] || { echo "::error::CHUNK=$CHUNK exceeds the 256-job cap"; exit 1; }
+
   shellcheck:
     name: shellcheck image build + installer
     runs-on: ubuntu-latest

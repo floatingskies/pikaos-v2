@@ -64,7 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Expand the package list into a matrix
+      - name: Expand the package list into a chunked matrix
         id: plan
         env:
           SEL: ${{ inputs.package }}
@@ -89,9 +89,27 @@ jobs:
             done
           fi
 
-          json="$(printf '%s\n' "${picked[@]}" | sed 's/.*/"&"/' | paste -sd, -)"
-          echo "matrix={\"package\":[$json]}" >> "$GITHUB_OUTPUT"
-          echo "selected: ${picked[*]}"
+          # GitHub Actions caps a single workflow run at 256 jobs, and the fleet
+          # is larger than that, so one matrix entry is a *chunk* of packages
+          # rather than a single package. 200 leaves headroom for the other jobs
+          # in a calling pipeline within the same run's limit.
+          #
+          # Chunking also keeps one runner's disk bounded: each job builds its
+          # slice serially, and a chunk that fails takes down only its own leg.
+          CHUNK=200
+          total=${#picked[@]}
+          nchunks=$(( (total + CHUNK - 1) / CHUNK ))
+          chunks=()
+          for ((i = 0; i < total; i += CHUNK)); do
+            part=("${picked[@]:i:CHUNK}")
+            pjson="$(printf '%s\n' "${part[@]}" | sed 's/.*/"&"/' | paste -sd, -)"
+            chunks+=("{\"index\":$((i / CHUNK)),\"packages\":[$pjson]}")
+          done
+          {
+            printf 'matrix={"chunk":[%s]}\n' "$(IFS=,; echo "${chunks[*]}")"
+            printf 'count=%s\n' "$total"
+          } >> "$GITHUB_OUTPUT"
+          echo "selected $total package(s) in $nchunks chunk(s) of <=$CHUNK"
 
   build:
     needs: plan
@@ -142,24 +160,62 @@ jobs:
           restore-keys: |
             v2-pool-${{ github.repository_id }}-
 
-      - name: Build ${{ matrix.package }}
+      # One matrix entry is a chunk of packages. Build them in order and keep
+      # going past a failure: a package that does not build against sid must not
+      # cost us the other 199 in its chunk, and the debs that *did* build are the
+      # ones worth publishing.
+      - name: Build chunk ${{ matrix.chunk.index }}
+        id: build
         env:
           PKG_BUILDER_IMAGE: ${{ steps.img.outputs.image }}
           PKG_BUILDER_PULL: ${{ inputs.pull && '1' || '0' }}
-        run: ./v2/pkg-build.sh '${{ matrix.package }}'
-
-      - name: Derive the artifact slug
-        id: slug
-        env:
-          PKG: ${{ matrix.package }}
-        run: echo "slug=${PKG//\//-}" >> "$GITHUB_OUTPUT"
+          CHUNK: ${{ toJSON(matrix.chunk.packages) }}
+        run: |
+          set -uo pipefail
+          mkdir -p v2/failed
+          mapfile -t pkgs < <(printf '%s' "$CHUNK" | jq -r '.[]')
+          echo "chunk ${{ matrix.chunk.index }}: ${#pkgs[@]} package(s)"
+          failed=()
+          for p in "${pkgs[@]}"; do
+            echo "::group::$p"
+            if ./v2/pkg-build.sh "$p"; then
+              echo "::endgroup::"
+              echo "::notice::$p built"
+            else
+              echo "::endgroup::"
+              echo "::error title=build failed::$p"
+              echo "$p" >> v2/failed/${{ matrix.chunk.index }}.txt
+              failed+=("$p")
+            fi
+          done
+          {
+            echo "failed<<EOF"
+            printf '%s\n' "${failed[@]:-}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Upload built debs
-        if: success() && inputs.upload != false
+        if: always() && inputs.upload != false
         uses: actions/upload-artifact@v4
         with:
-          name: v2-debs-${{ steps.slug.outputs.slug }}
+          name: v2-debs-chunk-${{ matrix.chunk.index }}
           path: |
             v2/repo/pool/main/*.deb
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 30
+
+      # A chunk that lost one package is still a usable chunk, so this is a
+      # warning rather than a failure: the release job publishes what built and
+      # lists what did not.
+      - name: Report packages that did not build
+        if: always()
+        env:
+          FAILED: ${{ steps.build.outputs.failed }}
+        run: |
+          set -euo pipefail
+          n="$(printf '%s' "$FAILED" | grep -cv '^$' || true)"
+          echo "chunk ${{ matrix.chunk.index }}: $n package(s) failed"
+          [ -f v2/failed/${{ matrix.chunk.index }}.txt ] || exit 0
+          while IFS= read -r p; do
+            [ -n "$p" ] && echo "::warning title=not built::$p"
+          done < v2/failed/${{ matrix.chunk.index }}.txt

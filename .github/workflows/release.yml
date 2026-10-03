@@ -1,0 +1,213 @@
+name: release
+
+# Publishes the built .debs as a real GitHub release.
+#
+# The rest of the chain deliberately never releases anything: repo-publish
+# serves a flat apt repo from Pages for an *installed* system to update from,
+# and v2-packages only uploads artifacts. That is right for CI churn, but it
+# means there is no way to grab "the debs" as a durable, versioned download.
+# This workflow is that download.
+#
+# It is intentionally separate from pipeline.yml and only runs when asked.
+#
+# Sources of debs, in priority order:
+#   1. artifacts of a specific run given via `run_id` (what the release notes
+#      should describe)
+#   2. artifacts of this run (workflow_call from a pipeline)
+#   3. artifacts of the most recent successful "v2 package builds" run
+#
+# Packages that failed to build are reported in the release notes rather than
+# silently omitted: a release that says "268 attempted, 251 built, 17 listed
+# below" is honest, and a release that quietly ships half a fleet is not.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Build run to publish debs from (blank = latest successful)
+        type: string
+        default: ''
+      tag:
+        description: Release tag (blank = v2-debs-<date>)
+        type: string
+        default: ''
+      prerelease:
+        description: Mark as a prerelease
+        type: boolean
+        default: true
+      dry_run:
+        description: Build everything but do not create the release
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      run_id:
+        type: string
+        default: ''
+      tag:
+        type: string
+        default: ''
+      prerelease:
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      url: ${{ steps.meta.outputs.url }}
+      built: ${{ steps.meta.outputs.built }}
+      attempted: ${{ steps.meta.outputs.attempted }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the source run and tag
+        id: src
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IN_RUN: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "$IN_RUN" ]; then
+            IN_RUN="$(gh run list --repo "$GITHUB_REPOSITORY" \
+                      --workflow v2-packages.yml --status success --limit 1 \
+                      --json databaseId --jq '.[0].databaseId')"
+          fi
+          [ -n "$IN_RUN" ] || { echo "::error::no successful v2-packages run to publish"; exit 1; }
+          echo "run_id=$IN_RUN" >> "$GITHUB_OUTPUT"
+          echo "source run: $IN_RUN"
+
+      - name: Fetch the deb artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: v2-debs-*
+          path: .artifacts
+          merge-multiple: true
+          run-id: ${{ steps.src.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Assemble the pool and index
+        id: meta
+        env:
+          IN_TAG: ${{ inputs.tag }}
+          PRERELEASE: ${{ inputs.prerelease }}
+          DRY: ${{ inputs.dry_run }}
+          SRC_RUN: ${{ steps.src.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          tag="$IN_TAG"
+          [ -n "$tag" ] || tag="v2-debs-$(date -u +%Y%m%d)"
+          url="https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag"
+
+          mkdir -p pool
+          # merge-multiple already flattened these, but a chunk that uploaded
+          # the same pool twice (retries) would have overwritten rather than
+          # duplicated; de-duplicate by name so the pool is exact.
+          find .artifacts -name '*.deb' -print0 2>/dev/null \
+            | xargs -0 -r -n1 cp -t pool --
+          ( cd pool && for f in *.deb; do [ -e "$f" ] || continue; done )
+          find pool -name '*.deb' -printf '%f\n' | sort > .all-debs
+
+          # Validate every deb before anything is published. A corrupt or
+          # truncated upload that reached the artifact must not reach a release.
+          bad=0
+          while IFS= read -r f; do
+            if ! dpkg-deb --info "pool/$f" >/dev/null 2>&1; then
+              echo "::error::unreadable deb: $f"
+              bad=$((bad + 1))
+            fi
+          done < .all-debs
+          if [ "$bad" -gt 0 ]; then
+            echo "::error::$bad deb(s) failed dpkg-deb --info; refusing to release"
+            exit 1
+          fi
+          built=$(wc -l < .all-debs)
+
+          # Attempted = what the fleet said it would build. This is the number
+          # that makes a partial release legible.
+          attempted=$(grep -cvE '^[[:space:]]*(#|$)' v2/ci/packages.tsv)
+
+          echo "tag=$tag"      >> "$GITHUB_OUTPUT"
+          echo "url=$url"      >> "$GITHUB_OUTPUT"
+          echo "built=$built"  >> "$GITHUB_OUTPUT"
+          echo "attempted=$attempted" >> "$GITHUB_OUTPUT"
+          echo "built $built deb(s) from run $SRC_RUN as $tag (fleet lists $attempted)"
+
+      - name: Build the release notes
+        id: notes
+        run: |
+          set -euo pipefail
+          built="${{ steps.meta.outputs.built }}"
+          attempted="${{ steps.meta.outputs.attempted }}"
+          {
+            echo "### x86-64-v2 package fleet"
+            echo
+            echo "\`$built\` deb(s) built from \`${{ steps.src.outputs.run_id }}\`."
+            echo
+            if [ "$built" -eq "$attempted" ]; then
+              echo "The full fleet built."
+            else
+              echo "The fleet lists \`$attempted\` packages; \`$built\` built."
+              echo "The packages that did not build are listed in the build run's"
+              echo "job summaries, one warning per package."
+            fi
+            echo
+            echo "### Installing"
+            echo
+            echo '```bash'
+            echo "curl -fsSL -O https://github.com/$GITHUB_REPOSITORY/releases/download/${{ steps.meta.outputs.tag }}/pikaos-v2-packages.list"
+            echo "sudo apt-get install ./<package>.deb"
+            echo '```'
+            echo
+            echo "An installed system updates from the flat apt repo on Pages, not"
+            echo "from this release."
+            echo
+            echo "### Contents"
+            echo
+            echo '```'
+            cat .all-debs
+            echo '```'
+          } > NOTES.md
+          echo "notes=$(wc -l < NOTES.md) lines"
+
+      - name: Manifest and checksum
+        run: |
+          set -euo pipefail
+          cp NOTES.md "pikaos-v2-${{ steps.meta.outputs.tag }}-notes.md"
+          cp .all-debs "pikaos-v2-packages-${{ steps.meta.outputs.tag }}.list"
+          ( cd pool && sha256sum *.deb > "../SHA256SUMS" )
+          wc -l SHA256SUMS
+
+      - name: Create the release
+        if: ${{ inputs.dry_run != true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --title "PikaOS v2 packages $TAG" \
+            --notes-file NOTES.md \
+            --prerelease=${{ inputs.prerelease }} \
+            pool/*.deb \
+            SHA256SUMS \
+            "pikaos-v2-packages-$TAG.list" \
+            "pikaos-v2-$TAG-notes.md"
+
+      - name: Summarise
+        run: |
+          {
+            echo "### release ${{ steps.meta.outputs.tag }}"
+            echo
+            echo "- url: ${{ steps.meta.outputs.url }}"
+            echo "- built: ${{ steps.meta.outputs.built }} / ${{ steps.meta.outputs.attempted }} attempted"
+            echo "- dry_run: ${{ inputs.dry_run }}"
+          } >> "$GITHUB_STEP_SUMMARY"
