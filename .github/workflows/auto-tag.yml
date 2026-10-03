@@ -1,0 +1,68 @@
+name: auto-tag
+
+# Tag every push to main automatically, so there is always a name to refer to a
+# build by, and so a release can be cut without inventing a version.
+#
+# Tag format: v2-debs-<UTC date>-<short sha>, e.g. v2-debs-20261003-a1b2c3d.
+#   * the date makes tags sort chronologically in the releases list
+#   * the sha means two pushes on the same day cannot collide, and the tag
+#     always points back at an exact commit
+#
+# This does NOT create a GitHub release. Tagging is cheap and safe; publishing
+# artifacts is a judgement call, and that is release.yml's job. The two are kept
+# apart so that a push can never quietly ship a half-built pool.
+#
+# Nothing is ever overwritten: if a tag already exists for a commit, it is left
+# alone. Deleting a tag to re-tag is a manual operation on purpose.
+
+on:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-tag-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create the tag
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha="${GITHUB_SHA::7}"
+          date="$(date -u +%Y%m%d)"
+          tag="v2-debs-${date}-${sha}"
+
+          if git ls-remote --exit-code --tags "https://github.com/$GITHUB_REPOSITORY" \
+               "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "tag $tag already exists; leaving it alone"
+            exit 0
+          fi
+
+          git init -q .
+          git remote add origin "https://github.com/$GITHUB_REPOSITORY"
+          # Lightweight tag: no message to keep in sync, and `gh release create`
+          # turns it into a proper release when it publishes.
+          git fetch -q --depth 1 origin "$GITHUB_SHA"
+          git tag "$tag" "$GITHUB_SHA"
+          git push origin "refs/tags/$tag"
+
+          echo "tagged $GITHUB_SHA as $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Summarise
+        run: |
+          echo "### auto-tag" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "- tag: \`${{ steps.meta.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "No release was created. Publish one with the" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`release\` workflow when the package pool is worth shipping." >> "$GITHUB_STEP_SUMMARY"

@@ -33,6 +33,33 @@ on:
         description: Upload the built debs as an artifact
         type: boolean
         default: true
+
+  # Build the fleet on every push, so a change to a shim table or to
+  # config/build-config/amd64-v2.sh is caught here rather than at release time.
+  #
+  # This was the gap that let a real defect through: the eight custom-gui-apps
+  # hardcoded `-C target-cpu=x86-64-v3` in debian/rules, and nothing rebuilt
+  # them on a push, so the fleet was only ever exercised when someone
+  # remembered to dispatch it. The ISA shim that fixes that was added a day
+  # later by hand.
+  #
+  # Scoped to the paths that can change a build's output. A docs-only or
+  # branding-artwork push should not spend an hour of CI.
+  push:
+    branches: [main, master]
+    paths:
+      - 'v2/ci/packages.tsv'
+      - 'v2/ci/isa-shims.txt'
+      - 'v2/ci/source-shims.tsv'
+      - 'v2/ci/script-shims.tsv'
+      - 'v2/ci/dep-shims.tsv'
+      - 'v2/ci/apply-*.pl'
+      - 'v2/build-config/**'
+      - 'config/build-config/**'
+      - 'v2/pkg-build.sh'
+      - 'v2/builder/**'
+      - '.github/workflows/v2-packages.yml'
+
   workflow_call:
     inputs:
       package:
@@ -51,6 +78,13 @@ on:
 permissions:
   contents: read
   packages: read
+
+# A push that triggers this workflow should still get a tag naming the commit,
+# so a failing build can be traced to one. auto-tag does it separately and
+# cheaply; this is a courtesy signal, not a dependency.
+#
+# Release tags (v2-*) additionally trigger release.yml, which is the automated
+# path from "a commit is worth naming" to "a release exists".
 
 concurrency:
   group: v2-packages-${{ github.ref }}

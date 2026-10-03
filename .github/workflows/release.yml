@@ -39,6 +39,25 @@ on:
         description: Build everything but do not create the release
         type: boolean
         default: false
+
+  # Publishing a release per push to main is exactly what this project should
+  # NOT do, so a tag alone never triggers it. Only a release tag does:
+  #
+  #   v2-debs-*        tags from .github/workflows/auto-tag.yml, one per push,
+  #                    created on every commit -- far too often
+  #   v2-*             deliberate, human-created release tags
+  #
+  # So the automated path to a release is: push, let auto-tag name the commit,
+  # then `git tag v2-<something> && git push origin v2-<something>` when the
+  # package pool is actually worth shipping. The dispatcher above remains for
+  # re-publishing an existing build run under a different name.
+  push:
+    tags:
+      - 'v2-*'
+      - '!v2-debs-*'
+    paths-ignore:
+      - '**/*.md'
+
   workflow_call:
     inputs:
       run_id:
@@ -74,16 +93,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           IN_RUN: ${{ inputs.run_id }}
+          IN_TAG: ${{ inputs.tag }}
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if [ -z "$IN_RUN" ]; then
-            IN_RUN="$(gh run list --repo "$GITHUB_REPOSITORY" \
-                      --workflow v2-packages.yml --status success --limit 1 \
-                      --json databaseId --jq '.[0].databaseId')"
+          # On a tag push, the tag names the release. Otherwise fall back to the
+          # dispatched input, and finally to a dated name.
+          tag="$IN_TAG"
+          if [ "$EVENT" = push ] && [ -n "$REF_NAME" ]; then
+            tag="$REF_NAME"
           fi
-          [ -n "$IN_RUN" ] || { echo "::error::no successful v2-packages run to publish"; exit 1; }
           echo "run_id=$IN_RUN" >> "$GITHUB_OUTPUT"
-          echo "source run: $IN_RUN"
+          echo "tag_hint=$tag"    >> "$GITHUB_OUTPUT"
+          echo "source run: ${IN_RUN:-<resolve from tag's commit>}"
+          echo "tag hint:  ${tag:-<none>}"
 
       - name: Fetch the deb artifacts
         uses: actions/download-artifact@v4
@@ -94,18 +118,20 @@ jobs:
           run-id: ${{ steps.src.outputs.run_id }}
           github-token: ${{ github.token }}
 
-      - name: Assemble the pool and index
+      - name: Resolve the build run, then assemble the pool and index
         id: meta
         env:
-          IN_TAG: ${{ inputs.tag }}
           PRERELEASE: ${{ inputs.prerelease }}
           DRY: ${{ inputs.dry_run }}
-          SRC_RUN: ${{ steps.src.outputs.run_id }}
+          TAG_HINT: ${{ steps.src.outputs.tag_hint }}
+          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="$IN_TAG"
+          tag="$TAG_HINT"
           [ -n "$tag" ] || tag="v2-debs-$(date -u +%Y%m%d)"
           url="https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag"
+          SRC_RUN="${{ steps.src.outputs.run_id }}"
 
           mkdir -p pool
           # merge-multiple already flattened these, but a chunk that uploaded
@@ -134,6 +160,30 @@ jobs:
           # Attempted = what the fleet said it would build. This is the number
           # that makes a partial release legible.
           attempted=$(grep -cvE '^[[:space:]]*(#|$)' v2/ci/packages.tsv)
+
+          # On a tag push, the run to publish is whichever v2-packages build
+          # succeeded for the tagged commit. Without this the step would grab
+          # "the latest successful run", which on a busy main is a different
+          # commit than the tag and quietly ships the wrong artifacts under the
+          # right version.
+          if [ "$EVENT" = push ] && [ -z "$SRC_RUN" ]; then
+            SRC_RUN="$(gh run list --repo "$GITHUB_REPOSITORY" \
+                        --workflow v2-packages.yml --status success --limit 20 \
+                        --json databaseId,headSha --jq \
+                        ".[] | select(.headSha == \"$GITHUB_SHA\") | .databaseId" \
+                        | head -1)"
+            if [ -z "$SRC_RUN" ]; then
+              echo "::warning::no successful v2-packages run for $GITHUB_SHA; falling back to the most recent one"
+              SRC_RUN="$(gh run list --repo "$GITHUB_REPOSITORY" \
+                          --workflow v2-packages.yml --status success --limit 1 \
+                          --json databaseId --jq '.[0].databaseId')"
+            fi
+            echo "run_id=$SRC_RUN" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -z "$SRC_RUN" ]; then
+            echo "::error::no successful v2-packages run to publish"
+            exit 1
+          fi
 
           echo "tag=$tag"      >> "$GITHUB_OUTPUT"
           echo "url=$url"      >> "$GITHUB_OUTPUT"
