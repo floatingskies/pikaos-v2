@@ -30,6 +30,7 @@ jobs:
   tag:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Create the tag
         id: meta
         env:
@@ -40,19 +41,26 @@ jobs:
           date="$(date -u +%Y%m%d)"
           tag="v2-debs-${date}-${sha}"
 
-          if git ls-remote --exit-code --tags "https://github.com/$GITHUB_REPOSITORY" \
-               "refs/tags/$tag" >/dev/null 2>&1; then
+          # git over https needs the token in the URL or an askpass helper.
+          # Setting GH_TOKEN alone is not enough -- the first run of this
+          # workflow failed with:
+          #   fatal: could not read Username for 'https://github.com'
+          # because ls-remote/push were talking to an anonymous remote. The
+          # token is a per-step secret, so it is only ever in this URL.
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          # gh is the better tool for both halves of this: it reads GH_TOKEN
+          # from the environment itself, so there is no URL to get wrong.
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
             echo "tag $tag already exists; leaving it alone"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          git init -q .
-          git remote add origin "https://github.com/$GITHUB_REPOSITORY"
-          # Lightweight tag: no message to keep in sync, and `gh release create`
-          # turns it into a proper release when it publishes.
-          git fetch -q --depth 1 origin "$GITHUB_SHA"
-          git tag "$tag" "$GITHUB_SHA"
-          git push origin "refs/tags/$tag"
+          # Lightweight tag: no message to keep in sync with the commit, and
+          # `gh release create` turns it into a proper release when publishing.
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" >/dev/null
 
           echo "tagged $GITHUB_SHA as $tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
