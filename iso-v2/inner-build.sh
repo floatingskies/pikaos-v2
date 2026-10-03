@@ -99,8 +99,21 @@ EOF
 # (there is no w64codecs); those are not redistributable and Debian sid's own
 # gstreamer1.0-plugins/libav cover playback.
 log "adding deb-multimedia (keyring pinned, then verified by apt)"
+# Fetch through whichever downloader the builder image carries: it has wget but
+# not curl, and rebuilding the image just to add one would cost more than it
+# saves.
+fetch_to() {
+    local url="$1" dest="$2"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL --retry 3 -o "$dest" "$url"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q -t 3 -O "$dest" "$url"
+    else
+        die "neither curl nor wget is available to fetch $url"
+    fi
+}
 DM_KEYRING_URL="https://deb-multimedia.org/pool/main/d/deb-multimedia-keyring/deb-multimedia-keyring_2024.9.1_all.deb"
-if curl -fsSL --retry 3 -o /tmp/deb-multimedia-keyring.deb "$DM_KEYRING_URL"; then
+if fetch_to "$DM_KEYRING_URL" /tmp/deb-multimedia-keyring.deb; then
     install -Dm0644 /tmp/deb-multimedia-keyring.deb "$ROOTFS_PATH/tmp/deb-multimedia-keyring.deb"
     chroot "$ROOTFS_PATH" dpkg -i /tmp/deb-multimedia-keyring.deb >/dev/null
     rm -f "$ROOTFS_PATH/tmp/deb-multimedia-keyring.deb" /tmp/deb-multimedia-keyring.deb
