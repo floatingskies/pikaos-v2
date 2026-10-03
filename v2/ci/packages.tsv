@@ -2,403 +2,201 @@
 # builds (mirrors repo-tools/workflows' "one list, one build implementation").
 #
 # Format: one "<org>/<name>" per line. Blank lines and lines starting with '#'
-# are ignored. The CI matrix and v2/ci/repo-index.sh both read this file.
-#
-# Scope: the PikaOS application suite plus the desktop environments, rebuilt for
-# x86-64-v2 from git.pika-os.com and compiled against normal Debian sid (the
-# builder image is Debian, not the PikaOS v3 repositories).
-#
-# Organisation: the list is grouped by org and, within an org, alphabetical.
-# Grouping is documentation only -- nothing reads the comments, the CI matrix
-# is just the flat list of slugs.
+# are ignored. The CI matrix, v2/ci/repo-index.sh and v2/build-fleet.sh all
+# read this file.
 #
 # ---------------------------------------------------------------------------
-# Membership rules (deliberate, because the gitea holds ~650 repos)
+# SCOPE: branding, themes, pikman, the GUI apps, and the apt/dpkg fast patches
 # ---------------------------------------------------------------------------
-# IN:
-#   * anything that ships a PikaOS main.sh packaging recipe (the fleet contract)
-#   * the otter-shell aggregator, which builds the whole otter suite from one repo
-# IN, with an ISA shim:
-#   * anything that hardcodes an x86-64 level outside pika-build-config
-#     (see v2/ci/isa-shims.txt)
-# OUT:
-#   * upstream-patches/* -- 650 repos, but 626 of them are bare "Diff" trees with
-#     no packaging at all. They are patch overlays against upstream, not
-#     buildable packages, so there is nothing to port until each one is wrapped.
-#   * repo-tools/*, images/*, website/* -- CI plumbing, ISO builders and web
-#     assets. Not runtime packages.
-#   * refind and the *-refind-* themes -- this image ships GRUB, not rEFInd
-#     (see README); rEFInd is explicitly purged from the ISO.
-#   * -git / -nightly / -legacy variants of a package that is already in the
-#     list (mesa-git, hyprland-git, quickshell-git, river-git, zig-nightly,
-#     zig-legacy). A release must not ship a moving target.
-#   * the nvidia-driver-NNN version matrix -- 13 mutually exclusive builds of the
-#     same driver. pika-nvidia-driver is the one entry point; the numbered ones
-#     stay out until there is a reason to pin a specific branch.
+# This list is deliberately small. It is the identity and user-facing surface of
+# PikaOS-v2 -- the things that make the image look and behave like PikaOS -- and
+# nothing else. The gitea offers 347 packages with a main.sh recipe; this file
+# names about 20 of them.
 #
-# Anything commented out below has a specific reason recorded next to it.
-
-# ---------------------------------------------------------------------------
-# boot / live  (6)
-# ---------------------------------------------------------------------------
-boot-packages/booster
-boot-packages/linux-firmware
-boot-packages/pika-live-booster-hooks
-boot-packages/pika-refind-btrfs-hooks
-boot-packages/refind-btrfs
-boot-packages/sbctl
-boot-packages/plymouth-theme-pika
-
-# ---------------------------------------------------------------------------
-# meta (3)
-# ---------------------------------------------------------------------------
-meta-packages/pika-audio
-meta-packages/pika-baseos
-meta-packages/pika-meta
-
-# ---------------------------------------------------------------------------
-# KDE desktop (5)
-# ---------------------------------------------------------------------------
-kde-packages/kio-admin
-kde-packages/papirus-colors
-kde-packages/pika-kde-desktop
-kde-packages/pika-kde-settings
-kde-packages/supergfxctl-plasmoid
-# akondi-mime5: Build-Depends libkf5akonadi-dev (KF5), dropped from sid (KF6 only).
-# kde-packages/akondi-mime5
-
-# ---------------------------------------------------------------------------
-# GNOME desktop (14)
-# ---------------------------------------------------------------------------
-gnome-packages/pika-gnome-desktop
-gnome-packages/pika-gnome-layouts
-gnome-packages/pika-gnome-settings
-gnome-packages/adw-gtk3
-gnome-packages/gnome-settings-daemon
-gnome-packages/mutter
-gnome-packages/gnome-shell-extension-arc-menu
-gnome-packages/gnome-shell-extension-custom-accent-colors
-gnome-packages/gnome-shell-extension-dash-to-panel
-gnome-packages/gnome-shell-extension-just-perfection
-gnome-packages/gnome-shell-extension-legacyschemeautoswitcher
-gnome-packages/gnome-shell-extension-pop-shell
-gnome-packages/gnome-shell-extension-supergfxctl-gex
-gnome-packages/pkg-bottles
-
-# ---------------------------------------------------------------------------
-# COSMIC desktop (34)
-# ---------------------------------------------------------------------------
-cosmic-packages/pika-cosmic-desktop
-cosmic-packages/pika-cosmic-settings
-cosmic-packages/appstream-data-pop
-cosmic-packages/cosmic-applets
-cosmic-packages/cosmic-applibrary
-cosmic-packages/cosmic-bg
-cosmic-packages/cosmic-comp
-cosmic-packages/cosmic-edit
-cosmic-packages/cosmic-files
-cosmic-packages/cosmic-greeter
-cosmic-packages/cosmic-icons
-cosmic-packages/cosmic-idle
-cosmic-packages/cosmic-launcher
-cosmic-packages/cosmic-monitor
-cosmic-packages/cosmic-notifications
-cosmic-packages/cosmic-osd
-cosmic-packages/cosmic-osk
-cosmic-packages/cosmic-panel
-cosmic-packages/cosmic-player
-cosmic-packages/cosmic-randr
-cosmic-packages/cosmic-screenshot
-cosmic-packages/cosmic-session
-cosmic-packages/cosmic-settings
-cosmic-packages/cosmic-settings-daemon
-cosmic-packages/cosmic-store
-cosmic-packages/cosmic-term
-cosmic-packages/cosmic-viewer
-cosmic-packages/cosmic-wallpapers
-cosmic-packages/cosmic-workspaces
-cosmic-packages/pop-fonts
-cosmic-packages/pop-gtk-theme
-cosmic-packages/pop-icon-theme
-cosmic-packages/pop-launcher
-cosmic-packages/xdg-desktop-portal-cosmic
-
-# ---------------------------------------------------------------------------
-# otter-shell (2 repos -> ~60 binaries)
+# What was dropped, and why:
 #
-# otter-zenith is an aggregator, not a single app: it reads pins.json, clones
-# every otter-* component repo at its pinned tag, builds the libotter-* SONAME
-# shared libraries and all the apps, and installs them from one debian/ tree
-# (~140 .install files). So the other 64 otter-shell repos are consumed *by*
-# this package and must NOT be listed individually -- doing so would rebuild
-# the same sources 64 times.
+#   * Anything that takes more than a few minutes to compile. mesa, wine,
+#     chromium, blender, otter-zenith and the rest are real multi-hour builds
+#     that need far more than four cores; on this box they cost a day and most
+#     of them fail against sid for unrelated reasons (dropped build-deps, KF5
+#     packages gone from the archive). Debian already ships them, built for the
+#     distribution baseline, and an image that installs them from sid gets them
+#     working today. Rebuilding them for v2 buys a little speed and costs a lot
+#     of reliability.
+#   * Whole desktop environments (COSMIC, Hyprland, niri, river, wayfire, otter).
+#     Same reasoning: thousands of packages, days of CPU, and nothing about the
+#     *branding* depends on them. The ISO recipe in iso-v2/info.sh picks a
+#     desktop from Debian; this list supplies the PikaOS skin on top.
+#   * Hardware/device tooling, nvidia driver matrix, gaming stack. Not identity.
 #
-# ISA shim: debian/rules passes `-Dcpu=x86_64_v3` to every zig build, so the
-# whole shell would be v3 regardless of amd64-v2.sh.
-# ---------------------------------------------------------------------------
-otter-shell/otter-zenith
-otter-shell/otter-gaming-utils
-
-# ---------------------------------------------------------------------------
-# window managers, shells and desktop bundles (28)
-# ---------------------------------------------------------------------------
-wm-packages/pika-hyprland-desktop
-wm-packages/pika-hyprland-session
-wm-packages/pika-hyprland-settings
-wm-packages/pika-hyprland-autologin
-wm-packages/pika-niri-desktop
-wm-packages/pika-niri-settings
-wm-packages/pika-labwc-settings
-wm-packages/pika-wayfire-settings
-wm-packages/pika-bundles
-wm-packages/pika-desktop-assets
-wm-packages/pika-developer-desktop
-wm-packages/pika-developer-settings
-wm-packages/hyprland
-wm-packages/hyprland-protocols
-wm-packages/hyprlang
-wm-packages/hyprutils
-wm-packages/hypridle
-wm-packages/hyprlock
-wm-packages/hyprpaper
-wm-packages/hyprcursor
-wm-packages/hyprgraphics
-wm-packages/hyprwire
-wm-packages/niri
-wm-packages/labwc
-wm-packages/labwc-tweaks
-wm-packages/river
-wm-packages/wayfire
-wm-packages/wf-config
-wm-packages/quickshell
-wm-packages/ags
-wm-packages/elephant
-wm-packages/noctalia
-wm-packages/ghostty
-wm-packages/ghostty-glfw
-wm-packages/swww
-wm-packages/wayland-protocols
-wm-packages/wlr-randr
-
-# ---------------------------------------------------------------------------
-# gaming (29)
-# ---------------------------------------------------------------------------
-gaming-packages/gamescope
-gaming-packages/gamescope-session
-gaming-packages/gamescope-session-steam
-gaming-packages/mangohud
-gaming-packages/vkbasalt
-gaming-packages/goverlay
-gaming-packages/sunshine
-gaming-packages/umu-launcher
-gaming-packages/wine-meta
-gaming-packages/wine-staging
-gaming-packages/winetricks
-gaming-packages/protontricks
-gaming-packages/protonplus
-gaming-packages/prismlauncher
-gaming-packages/lutris
-gaming-packages/heroic-games-launcher
-gaming-packages/an-anime-game-launcher
-gaming-packages/faugus-launcher
-gaming-packages/alvr
-gaming-packages/wivrn
-gaming-packages/pyroveil
-gaming-packages/lsfg-vk
-gaming-packages/xone
-gaming-packages/xpadneo
-gaming-packages/xpad-noone
-gaming-packages/extest
-gaming-packages/display-info0
-gaming-packages/steamos-manager
-gaming-packages/steamdeck-jupiter-driver
-
-# ---------------------------------------------------------------------------
-# device / hardware support (28)
-# ---------------------------------------------------------------------------
-device-packages/libfprint
-device-packages/fprintd
-device-packages/hwdata
-device-packages/libmfx-gen1.2-binder
-device-packages/intel-media-driver-non-free
-device-packages/sof-bin
-device-packages/scrcpy
-device-packages/asusctl
-device-packages/steamos-manager
-device-packages/supergfxctl
-device-packages/cfhdb
-device-packages/fabiscafe-devices
-device-packages/amdgpu-bl-blocker
-device-packages/omenctl
-device-packages/omen-fan-control
-device-packages/linuwu-sense
-device-packages/legion-kb-rgb
-device-packages/openrgb
-device-packages/lact
-device-packages/corectrl
-device-packages/sdgyrodsu
-device-packages/ryzenadj
-device-packages/headsetcontrol
-device-packages/headsetcontrol-gui
-device-packages/goxlr-utility
-device-packages/goxlr-utility-ui-wrapper-app
-device-packages/ckb-next
-device-packages/inputplumber
-device-packages/hidapi-hotplug
-device-packages/gbinder-python
-device-packages/libgbinder
-device-packages/libglibutil
-device-packages/powerbuttond
-
-# ---------------------------------------------------------------------------
-# graphics stack (13)
-# ---------------------------------------------------------------------------
-gfx-packages/mesa
-gfx-packages/wayland
-gfx-packages/xwayland
-gfx-packages/wayland-protocols
-gfx-packages/switcheroo-control
-gfx-packages/pika-amdgpu-config
-gfx-packages/pika-amdgpu-core
-gfx-packages/pika-amdgpu-switcher
-gfx-packages/pika-i915-config
-gfx-packages/pika-nvidia-config
-gfx-packages/amdvlk
-gfx-packages/intel-gmmlib
-gfx-packages/acs-weston
-gfx-packages/intel-media-driver-non-free
-
-# ---------------------------------------------------------------------------
-# nvidia (4) -- see the membership rules for why not the whole matrix
-# ---------------------------------------------------------------------------
-nvidia-packages/pika-nvidia-driver
-nvidia-packages/egl-wayland
-nvidia-packages/nvidia-egl-gbm
-nvidia-packages/vk-hdr-layer-kwin6
-
-# ---------------------------------------------------------------------------
-# multimedia (16) -- includes the blender and obs-studio patch sets
+# The rule: if a package is not part of what PikaOS *looks* like or what the
+# user *does* in the first five minutes, it comes from Debian.
 #
-# blender and obs-studio are the two heaviest builds in the fleet by a wide
-# margin; see the notes on each.
 # ---------------------------------------------------------------------------
-multimedia-packages/obs-studio
-multimedia-packages/obs-gamecapture-plugin
-multimedia-packages/obs-gstreamer-vaapi-plugin
-multimedia-packages/obs-aitum-multistream
-multimedia-packages/blender
-multimedia-packages/opencolorio
-multimedia-packages/pipewire
-multimedia-packages/cava
-multimedia-packages/jamesdsp
-multimedia-packages/dulcepan
-multimedia-packages/myx
-multimedia-packages/losslesscut
-multimedia-packages/gpu-screen-recorder
-multimedia-packages/gpu-screen-recorder-gtk
-multimedia-packages/gpu-screen-recriver-notification
-multimedia-packages/gpu-screen-recorder-ui
+# Note on the apt/dpkg fast patches
+# ---------------------------------------------------------------------------
+# v2/patches/apt/apt-fast.patch and v2/patches/dpkg/dpkg-fast.patch are NOT in
+# this list. They are not PikaOS packages: they are performance patches over
+# *upstream* apt and dpkg, so they have no git.pika-os.com repo to build from
+# and cannot go through pkg-build.sh, which is built around cloning one.
+#
+# They are also currently dead files -- nothing references them. See
+# v2/patches/README.md for how they are meant to be consumed and what still has
+# to happen before they reach an image. That is deliberate and documented rather
+# than quietly wired up: shipping a patched dpkg that silently skipped
+# verification would be a far worse outcome than not shipping it.
+#
+# ===========================================================================
+# 1. Branding and themes
+# ===========================================================================
+# These are what makes the image read as PikaOS rather than as Debian with a
+# wallpaper. All are data-only or icon-theme rebuilds: seconds to a couple of
+# minutes each, no ISA concerns (papirus is icons + XML, no compiled code).
 
-# ---------------------------------------------------------------------------
-# general / PikaOS userland (56)
-# ---------------------------------------------------------------------------
-general-packages/pikman
-general-packages/pika-sources
 general-packages/pika-wallpapers
-general-packages/pika-lightdm
-general-packages/pika-shell-profiles
-general-packages/pika-apx-configs
-general-packages/pika-mango
 general-packages/sound-theme-pika
 general-packages/desktop-base
+general-packages/pika-apx-configs
+general-packages/pika-sources
+boot-packages/plymouth-theme-pika
+kde-packages/papirus-colors
+kde-packages/pika-kde-settings
+kde-packages/pika-kde-desktop
+
+# general-packages/pika-lightdm: a display-manager theme, but the image ships
+# GDM/SDDM, not LightDM. Excluded with the reason rather than silently.
+# general-packages/pika-lightdm
+
+# boot-packages/pika-refind-theme: this image boots GRUB, not rEFInd
+# (see README); the theme would have nothing to render.
+# boot-packages/pika-refind-theme
+
+# kde-packages/supergfxctl-plasmoid: a Plasma applet, and it is already in
+# iso-v2/info.sh via the Debian name plasma-supergfxctl. Rebuilding the PikaOS
+# copy adds a second source for one QML file.
+# kde-packages/supergfxctl-plasmoid
+
+# ===========================================================================
+# 2. pikman
+# ===========================================================================
+# The PikaOS package manager, and the one piece of userland here that is
+# genuinely compiled. It is Go, so the v2 knob is GOAMD64=v2 rather than
+# -march, which amd64-v2.sh already sets (see the table in README).
+#
+# Its Debian dependencies were already trimmed to what we ship (apt-utils,
+# flatpak, podman), dropping the PikaOS-only pika-apx-configs and
+# vanilla-apx-gui, so it installs on a plain sid base.
+
+general-packages/pikman
+custom-gui-packages/pikman-update-manager
+
+# ===========================================================================
+# 3. PikaOS GUI apps
+# ===========================================================================
+# Eight GTK4/libadwaita apps in Rust, written by PikaOS for its own image.
+# These are the ones a user actually launches, and every one of them is named
+# in iso-v2/info.sh's PIKA_PKGS, so they are load-bearing for the live image.
+#
+# Each is a real cargo build (a few minutes) and each pulls a Rust toolchain
+# via rustup in main.sh, so they are the slowest entries in this list and the
+# ones most likely to hit a crates.io API change. That is the accepted cost:
+# these have no Debian equivalent, so if they do not build here the image is
+# missing them.
+
+custom-gui-packages/pika-welcome
+custom-gui-packages/pika-first-setup
+custom-gui-packages/pika-installer-gtk4
+custom-gui-packages/pika-drivers
+custom-gui-packages/pika-device-manager
+custom-gui-packages/pika-kernel-manager
+custom-gui-packages/falcond-gui
+
+# ===========================================================================
+# 4. Identity: os-release and fastfetch
+# ===========================================================================
+# The two things that answer "what am I running on?" -- `cat /etc/os-release`
+# and the login banner. Both are branding, which is why they are here rather
+# than pulled from Debian.
+
+# general-packages/base-files
+#
+# ENABLED. Read this before assuming it is inert: it is the PikaOS os-release
+# package, a repack of Debian's own base-files
+# (same Maintainer, same Rules-Requires-Root, Essential: yes, Provides: base)
+# carrying one substituted file:
+#
+#   PRETTY_NAME="PikaOS 4"   NAME="PikaOS"   ID=pika   ID_LIKE=debian
+#   VERSION_CODENAME=nest   LOGO=pika-logo
+#
+# and debian/rules moves it to /usr/lib/os-release with /etc/os-release as a
+# relative symlink, which is what systemd, fastfetch and `lsb_release` all read.
+#
+# Read this before enabling it. Two consequences that are not obvious:
+#
+#   * It REPLACES Debian's base-files rather than layering on top of it. Same
+#     package name, Essential: yes, Provides/Replaces base -- so installing this
+#     over a sid system takes ownership of /etc/issue, /etc/motd, the origin
+#     files and the whole FHS skeleton, and its rules rewrite them with the
+#     substitution above. That is intended, but it means this is not a
+#     "drop it in, get a PRETTY_NAME" package: it is a fork of a package every
+#     system depends on. Worth an explicit decision rather than a line in a
+#     list.
+#   * It is `VERSION="14"` in main.sh against a sid tree, and the debian/
+#     dir is inherited from Debian, so it is Debian's 14-era packaging. If a
+#     sid dh_* sequence has moved on, this will need the same shim treatment
+#     as the rest of the fleet.
+#
+# Consequence for the ISO: it must stop shipping Debian's own base-files, and
+# pipeline.yml's dependency check will see the swap. If that check fails after
+# enabling this, the cause is the replacement, not a missing dependency.
 general-packages/base-files
-general-packages/pam-any
-general-packages/pam-parallel
+
+# general-packages/fastfetch
+#
+# The system-info banner. PikaOS ships it as a plain upstream build: main.sh
+# clones fastfetch-cli/fastfetch and runs dpkg-buildpackage, and the repo's
+# debian/ holds only a changelog, so dh_make generates the packaging at build
+# time. There is no PikaOS logo or config in the repo -- the branding comes from
+# the os-release above (fastfetch reads LOGO= and the pika logo from
+# /usr/share/pixmaps), not from anything in this package.
+#
+# v2 relevance: fastfetch is C, so amd64-v2.sh applies normally.
+general-packages/fastfetch
+
+# ===========================================================================
+# 5. Supporting shell/profile packages
+# ===========================================================================
+# Small, and referenced by the ISO recipe.
+
+general-packages/pika-shell-profiles
+general-packages/pika-mango
 general-packages/apx
 general-packages/popsicle
-general-packages/dmemcg-booster
-general-packages/apt-btrfs-snapper
-general-packages/ananicy-cpp
-general-packages/ananicy-rules
-general-packages/pik
-general-packages/pika-paste
-general-packages/falcond
-general-packages/pikainstall
-general-packages/pikafetch
-general-packages/falcon
-general-packages/pwvucontrol
-general-packages/tuned
-general-packages/pika-pkg-template
-general-packages/zig
-general-packages/fastfetch
-general-packages/neofetch
-general-packages/atuin
-general-packages/nushell
-general-packages/yazi
-general-packages/neovim-statuscol
-general-packages/carapace
-general-packages/carapace-bridge
-general-packages/blivet-gui
-general-packages/cockpit-files
-general-packages/ly
-general-packages/walker
-general-packages/rofi-wayland
-general-packages/matugen
-general-packages/pixdecor
-general-packages/wallust
-general-packages/wayshot
-general-packages/swayosd
-general-packages/swaylock-effects
-general-packages/swww
-general-packages/dkms
-general-packages/gbinder-python
-general-packages/sdbus-cpp
-general-packages/xdg-utils
-general-packages/yad
-general-packages/webapp-manager
-general-packages/wayfreeze
-general-packages/waydroid
-general-packages/mullvadvpn-app
-general-packages/xivlauncher-rb
-general-packages/xdg-desktop-portal-hyprland
 
-# ---------------------------------------------------------------------------
-# python (7)
-# ---------------------------------------------------------------------------
-python-packages/blivet
-python-packages/python-pid
-python-packages/python3-antlr4
-python-packages/python3-fvs
-python-packages/python3-maturin
-python-packages/python3-orjson
-python-packages/python3-vkbasalt-cli
+# ===========================================================================
+# 6. Meta packages
+# ===========================================================================
+# Dependency declarations only -- no compiled code at all, seconds each. Kept
+# because pika-baseos is the name the ISO and installer refer to, so dropping it
+# would break the dependency closure check in pipeline.yml.
 
-# ---------------------------------------------------------------------------
-# upstream repacks (4) -- third-party sources PikaOS maintains a fork of
-# ---------------------------------------------------------------------------
-upstream-repacks/kdsoap
-upstream-repacks/kdsoap-ws-discovery-client
-upstream-repacks/kio-extras
-upstream-repacks/lua5.5
+meta-packages/pika-baseos
+meta-packages/pika-audio
+meta-packages/pika-meta
 
-# ---------------------------------------------------------------------------
-# kernels (3)
-#
-# These do NOT follow the fleet contract: they never read pika-build-config.sh
-# (no DEB_CFLAGS_MAINT_APPEND), they drive scripts/{source,patch,config,build,
-# output}.sh and a checked-in .config, and they emit debs with bindeb-pkg.
-# They are listed here because they are buildable from the gitea, but they need
-# their own treatment -- see the ISA note below and the release notes.
-#
-# ISA shim: scripts/config.sh overrides the shipped .config (which is
-# CONFIG_X86_64_VERSION=1, baseline) and forces the level at build time. All
-# three force 3 upstream; v2/ci/isa-shims.txt rewrites that line to 2.
-#
-# Not listed: linux-pikaos-6.10.10, 6.11.8, 6.13.6, 6.14, 6.15, 6.16, 6.17,
-# 6.19, 7.0, 7.1, scx, scx-tools, kernel-pika, linux-pikaos-template. The
-# non-LTS lines are superseded, and the scx/template repos are build tooling
-# rather than kernels this image would boot.
-# ---------------------------------------------------------------------------
-# kernel-packages/linux-pikaos-7.2
-# kernel-packages/linux-pikaos-6.18
-# kernel-packages/linux-pikaos-6.12.10
+# ===========================================================================
+# Deliberately absent
+# ===========================================================================
+# kernels      v2/kernels/build-kernel.sh builds them separately; they are not
+#              packages from the gitea's fleet contract and each is an hour+.
+#              See the kernel section of README.
+# upstream-patches/*
+#              650 repos, but 626 are bare "Diff" trees with no packaging at
+#              all. They are patch overlays, not buildable packages.
+# boot-packages/linux-firmware
+#              ~4G of firmware blobs and 15+ minutes of extraction for no
+#              branding value; Debian's own linux-firmware is complete.
+# boot-packages/booster
+#              A boot-time microcode reassert daemon, not branding.
+# gaming-packages/*, multimedia-packages/*
+#              Not branding, and the heavy ones are day-long builds.

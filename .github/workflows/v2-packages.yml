@@ -207,6 +207,31 @@ jobs:
       # A chunk that lost one package is still a usable chunk, so this is a
       # warning rather than a failure: the release job publishes what built and
       # lists what did not.
+      # Proof that what we shipped is v2. The build flags are not evidence:
+      # PikaOS's own debian/rules files set -march / -C target-cpu directly and
+      # override the injected config, so a package can log "x86-64-v2" and still
+      # contain v3 code. This reads the binaries.
+      - name: Verify the debs contain no above-v2 instructions
+        if: always()
+        run: |
+          set -uo pipefail
+          shopt -s nullglob
+          debs=(v2/repo/pool/main/*.deb)
+          if [ "${#debs[@]}" -eq 0 ]; then
+            echo "::notice::no debs to check in this chunk"
+            exit 0
+          fi
+          echo "checking ${#debs[@]} deb(s) for above-v2 instructions"
+          # Runtime-dispatched SIMD (httparse::simd::avx2 and friends) is
+          # excluded by the checker: it is selected by a CPUID check at runtime
+          # and is exactly what we want a portable binary to contain.
+          if v2/ci/check-isa.sh "${debs[@]}"; then
+            echo "::notice::ISA check passed"
+          else
+            echo "::error title=above-v2 instructions in built debs::a shipped binary uses an instruction x86-64-v2 CPUs lack; see the job log for the mnemonic and the enclosing symbol"
+            exit 1
+          fi
+
       - name: Report packages that did not build
         if: always()
         env:

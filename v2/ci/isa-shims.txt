@@ -32,3 +32,15 @@ ZIG_TARGET_MCPU "x86_64_v3"|ZIG_TARGET_MCPU "x86_64_v2"
 # CONFIG_X86_64_VERSION=1, i.e. baseline) and forces the level at build time.
 # 7.2 and 6.18 use "3"; 6.12 is pinned through the same line.
 --set-val X86_64_VERSION 3|--set-val X86_64_VERSION 2
+
+# custom-gui-packages/*: every one of the eight GTK4 apps sets Rust's target CPU
+# in debian/rules, overriding whatever amd64-v2.sh exported. Found by checking
+# the built debs rather than the flags: pika-device-manager carried VEX-encoded
+# 256-bit vpbroadcastb (an AVX2 instruction) while the build log said
+# CFLAGS=-march=x86-64-v2, so the ISA was v3 and the log did not mention it.
+#
+# The commented-out line above it is the same setting with LTO on, so this
+# rewrite hits both the live and the dead copy. Byte-literal matching is what
+# makes that safe.
+-C target-cpu=x86-64-v3|-C target-cpu=x86-64-v2
+

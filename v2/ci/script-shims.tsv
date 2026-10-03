@@ -1,0 +1,52 @@
+# Maintainer-script shims for the x86-64-v2 rebuild.
+#
+# apply-dep-shims.pl drops the PikaOS-only dependencies that plain Debian sid
+# cannot satisfy. That is only half the job: a package's pre/post inst and rm
+# scripts often touch paths those dependencies created, and with the dependency
+# gone the path never appears -- so dpkg runs a maintainer script that fails and
+# leaves the package half-configured. The package is fine; only the hook
+# assumes something we removed on purpose.
+#
+# v2/ci/apply-script-shims.pl rewrites the maintainer scripts in a fetched
+# source tree before dpkg-buildpackage runs. Format: "<literal from>\t<to>",
+# one per line. Literal, not regex. Blank lines and '#' comments are ignored.
+#
+# Keep these narrowly scoped: each entry must be a line that provably breaks
+# when a specific shimmed dependency is missing. A blanket "make postinst
+# tolerant of everything" would hide real breakage in scripts that should fail.
+#
+# ---------------------------------------------------------------------------
+# pika-device-manager
+# ---------------------------------------------------------------------------
+# Upstream postinst:
+#     set -e
+#     update-mime-database /usr/share/mime
+#     update-desktop-database
+#     glib-compile-schemas /usr/share/glib-2.0/schemas
+#     chmod -R 777 /var/cache/cfhdb/
+#
+# /var/cache/cfhdb is created by cfhdb, which dep-shims.tsv drops from Depends
+# (it is a PikaOS-only hardware database with no Debian equivalent). Without it
+# chmod has nothing to walk, `set -e` turns that into a non-zero exit, and dpkg
+# reports:
+#     the subprocess old pika-device-manager maintainer script postinst failed
+#     with error code 1
+#
+# Guard the chmod on the directory existing. Note we do NOT create the
+# directory: /var/cache/cfhdb belongs to cfhdb, and a device manager should not
+# fabricate another package's cache directory just to make its own install
+# succeed. If the user later installs cfhdb, cfhdb creates the directory and
+# this hook's chmod runs as intended.
+#
+# The `if ... ; then ... ; fi` shape is load-bearing, not decoration. The
+# obvious `[ -d x ] && cmd` does NOT work here: when the test is false the &&
+# short-circuits and the compound command's status is 1, which under the
+# postinst's `set -e` becomes the script's exit status. The first attempt at
+# this shim used the && form and still failed with exit 1 -- same symptom, no
+# chmod error in the log, which is a genuinely confusing thing to debug.
+# An `if` block whose condition is false evaluates to 0.
+#
+# (The 777 is upstream's, for a cache directory written by the running GUI as
+# root and read by a session user. Not ours to change here; it is worth a
+# separate upstream conversation, not a silent edit in a shim table.)
+chmod -R 777 /var/cache/cfhdb/	if [ -d /var/cache/cfhdb ]; then chmod -R 777 /var/cache/cfhdb/; fi

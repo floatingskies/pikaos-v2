@@ -302,6 +302,7 @@ jobs:
             ['-Dcpu=x86_64_v3']=otter-shell/otter-zenith
             ['ZIG_TARGET_MCPU "x86_64_v3"']=general-packages/zig
             ['--set-val X86_64_VERSION 3']=kernel-packages/linux-pikaos-7.2
+            ['-C target-cpu=x86-64-v3']=custom-gui-packages/pika-device-manager
           )
           missing=0
           while IFS= read -r line || [ -n "$line" ]; do

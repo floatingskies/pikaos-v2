@@ -75,6 +75,22 @@ fetch_source() {
   done < <(find "$dst" -path '*/debian/control' -type f)
   [ "$shimmed" = 1 ] && log "dep-shims applied"
 
+  # The other half of the same job. Dropping a dependency also removes whatever
+  # that package created on disk, and a maintainer script that walks the removed
+  # path now fails under `set -e`, leaving the package half-configured. See
+  # v2/ci/script-shims.tsv for the cases and why each one is guarded rather than
+  # "fixed" by restoring the dependency.
+  if [ -s "$HERE/ci/script-shims.tsv" ]; then
+    local scripts_found=0
+    while IFS= read -r ms; do
+      perl "$HERE/ci/apply-script-shims.pl" "$HERE/ci/script-shims.tsv" "$ms" || exit 1
+      scripts_found=1
+    done < <(find "$dst" -path '*/debian/*' -type f \( \
+                -name preinst -o -name postinst -o -name prerm -o -name postrm \
+                -o -name config -o -name templates \) 2>/dev/null)
+    [ "$scripts_found" = 1 ] && log "script-shims checked"
+  fi
+
   # PikaOS' changelog bot (and old upstream entries) stamp signoff trailers with
   # "GMT"/"UTC" or a short "+00"; the newer Debian sid changelog parser rejects
   # anything that is not "+HHMM"/"-HHMM" ("Could not parse timestamp ... signoff
@@ -128,8 +144,6 @@ run_build() {
     -v "$WORK/$KEY:/work" \
     -w /work \
     -e FORCE_UNSAFE_CONFIGURE=1 \
-    -e HOST_UID="$(id -u)" \
-    -e HOST_GID="$(id -g)" \
     -e PIKA_JOBS="${PKG_JOBS:-}" \
     "$IMAGE" bash -c '
       set -e
@@ -137,8 +151,14 @@ run_build() {
       # The host owns the tree as an unprivileged user but this container runs
       # as root, so git refuses to touch /work ("detected dubious ownership").
       git config --global --add safe.directory "*"
-      # Hand the tree back to the host user even if the build fails.
-      trap "chown -R ${HOST_UID}:${HOST_GID} /work" EXIT
+      # NOTE: no `trap chown` back to the host user here, and that is deliberate.
+      # Under rootless podman the container root is an unprivileged subuid, so a
+      # chown to $HOST_UID inside the container does not land on the host owner:
+      # the tree comes back owned by a subuid and every later `rm -rf` of the
+      # work tree fails with "Permission denied" across thousands of files. The
+      # build-fleet.sh caller (and the CI runner) reclaim ownership from the
+      # host side with `podman unshare chown`, where the uid mapping is the
+      # other way round.
       # The kernel packages do not go through pika-build-config.sh at all (they
       # drive their own scripts/ and a .config), so only source it when present.
       if [ -f ./pika-build-config.sh ]; then
@@ -184,6 +204,8 @@ fingerprint() {
   sha256sum "$HERE/build-config/amd64-v2.sh" | cut -d' ' -f1
   sha256sum "$HERE/ci/dep-shims.tsv" | cut -d' ' -f1
   sha256sum "$HERE/ci/apply-dep-shims.pl" | cut -d' ' -f1
+  sha256sum "$HERE/ci/script-shims.tsv" | cut -d' ' -f1
+  sha256sum "$HERE/ci/apply-script-shims.pl" | cut -d' ' -f1
   # The v3->v2 hardcode rewrites change the build result, so they are part of
   # the identity of a cached deb just like the flags themselves.
   sha256sum "$HERE/ci/isa-shims.txt" | cut -d' ' -f1
@@ -226,5 +248,19 @@ fi
 log "$NAME needs building"
 
 run_build
+
+# Give the tree back to the host user. Under rootless podman the container's
+# root is an unprivileged subuid, so everything the build wrote into /work is
+# owned by a uid this account does not own -- which makes `rm -rf` of the work
+# tree fail with "Permission denied" on the next run, and makes a re-clone
+# impossible. Reclaiming from the host side (inside `podman unshare`, where the
+# mapping is the other way round) is the only thing that works.
+#
+# A no-op under docker, where the container root really is uid 0 and bind
+# mounts keep the host's ownership.
+if [ "$ENGINE" = podman ]; then
+  podman unshare chown -R "$(id -u):$(id -g)" "$WORK/$KEY" 2>/dev/null || true
+fi
+
 collect
 log "done: $NAME"

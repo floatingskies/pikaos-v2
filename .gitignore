@@ -29,5 +29,12 @@ v2/work/
 v2/repo/pool/
 iso-v2/build/
 cache/
+
+# Build state, not source. The .stamps dir is the pkg-build.sh cache keyed on
+# each package's upstream commit plus the injected build inputs, and
+# fleet-build-report.tsv is per-run output; neither belongs in git and both are
+# large enough to be noise in a diff.
+v2/repo/.stamps/
+v2/repo/fleet-build-report.tsv
 boot.log
 *.logrecipe.txt
