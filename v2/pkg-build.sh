@@ -80,9 +80,17 @@ fetch_source() {
   # whole tree because these recipes copy themselves into a subdirectory before
   # building, so the file being fixed may be at src/main.rs or <name>/src/main.rs
   # depending on how far main.sh got.
-  if [ -s "$HERE/ci/source-shims.tsv" ]; then
-    perl "$HERE/ci/apply-source-shims.pl" "$HERE/ci/source-shims.tsv" "$dst" || exit 1
-  fi
+  #
+  # branding-shims.tsv reuses the same applier: it is the same kind of
+  # literal-path/literal-string substitution, kept in its own file because every
+  # entry in it is a deliberate choice about how the image looks rather than a
+  # fix for something that is broken, and those want to be easy to list and
+  # easy to revert.
+  for shimtable in source-shims branding-shims; do
+    if [ -s "$HERE/ci/$shimtable.tsv" ]; then
+      perl "$HERE/ci/apply-source-shims.pl" "$HERE/ci/$shimtable.tsv" "$dst" || exit 1
+    fi
+  done
 
   # The other half of the dep-shim job. Dropping a dependency also removes
   # whatever that package created on disk, and a maintainer script that walks
@@ -215,6 +223,7 @@ fingerprint() {
   sha256sum "$HERE/ci/script-shims.tsv" | cut -d' ' -f1
   sha256sum "$HERE/ci/apply-script-shims.pl" | cut -d' ' -f1
   sha256sum "$HERE/ci/source-shims.tsv" | cut -d' ' -f1
+  sha256sum "$HERE/ci/branding-shims.tsv" | cut -d' ' -f1
   sha256sum "$HERE/ci/apply-source-shims.pl" | cut -d' ' -f1
   # The v3->v2 hardcode rewrites change the build result, so they are part of
   # the identity of a cached deb just like the flags themselves.

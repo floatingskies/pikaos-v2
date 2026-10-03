@@ -1,0 +1,33 @@
+# Branding overrides applied to a fetched source tree before the build runs.
+#
+# This is where "Debika" lives: PikaOS's own packages, with Debian kept where
+# Debian is the better answer. Separate from source-shims.tsv (bug fixes) and
+# the other two shim tables because every entry here is a *choice*, not a
+# defect, and should be easy to find and easy to revert.
+#
+# Format: <path-glob>\t<literal from>\t<literal to>
+# Literal, not regex. Blank lines and '#' comments ignored.
+# ---------------------------------------------------------------------------
+# kde-packages/pika-kde-settings: KDE accent colour
+# ---------------------------------------------------------------------------
+# PikaOS ships a yellow accent (232,203,45) in etc/skel/.config/kdeglobals,
+# which is what lands in a new user's home directory.
+#
+# Changing it to #e9643a -- an orange-red, close to Debian's own #d41551 family
+# but distinct from it, so the desktop reads as its own thing rather than as
+# stock Plasma. kdeglobals wants decimal RGB, not hex:
+#
+#     #e9643a  ->  233,100,58
+#
+# Two keys carry the value and both must change. AccentColor is what KDE reads;
+# LastUsedCustomAccentColor is what the colour picker reopens on, so leaving it
+# at the old value makes the settings UI offer a colour the desktop is not
+# using.
+#
+# Verified in the fetched tree at etc/skel/.config/kdeglobals.
+#
+# Not changing the GTK side: colors.css in gtk-3.0 and gtk-4.0 is a separate
+# file with its own palette, and making it match would be a design decision
+# rather than a substitution. Say so rather than half-doing it.
+etc/skel/.config/kdeglobals	AccentColor=232,203,45	AccentColor=233,100,58
+etc/skel/.config/kdeglobals	LastUsedCustomAccentColor=232,203,45	LastUsedCustomAccentColor=233,100,58
