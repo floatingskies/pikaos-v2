@@ -75,9 +75,55 @@ jobs:
       pages: write
       id-token: write
 
-  iso:
+  # Fail here, with the offending names, instead of letting the ISO build spend
+  # twenty minutes on debootstrap only to have apt print a hundred "but it is
+  # not going to be installed" lines with one real cause buried at the top.
+  deps:
     needs: repo
     if: ${{ always() && needs.repo.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the v2 repo artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: v2-repo
+          path: v2/repo
+
+      - name: Pull the builder image
+        uses: docker/login-action@v3
+        if: ${{ inputs.push_images }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Collect the package list both recipes install
+        run: |
+          set -euo pipefail
+          # Cover minimal and full: the union is what has to resolve.
+          ( set -a; . iso-v2/info.sh; set +a
+            printf '%s\n' $BASE_PKGS $INSTALLER_PKGS $FIRMWARE_PKGS \
+                            $DESKTOP_PKGS $CODEC_PKGS $PIKA_PKGS ) \
+            | tr ' ' '\n' | grep -v '^$' | sort -u > recipe.txt
+          echo "recipe: $(wc -l < recipe.txt) packages"
+
+      - name: Check the dependency closure against Debian sid
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}/pika-v2-builder:latest
+        run: |
+          set -euo pipefail
+          img="$IMAGE"
+          if [ "${{ inputs.push_images }}" != "true" ]; then img=pika-v2-builder; fi
+          pull=""; [ "${{ inputs.push_images }}" = "true" ] && pull="--pull=always"
+          # shellcheck disable=SC2086
+          docker run --rm $pull -v "$PWD:/w" -w /w "$img" \
+            bash /w/v2/ci/check-sid-deps.sh /w/v2/repo/Packages /w/recipe.txt
+
+  iso:
+    needs: [repo, deps]
+    if: ${{ always() && needs.repo.result == 'success' && needs.deps.result == 'success' }}
     uses: ./.github/workflows/iso.yml
     with:
       recipe: ${{ inputs.recipe }}

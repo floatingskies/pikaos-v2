@@ -30,4 +30,4 @@ v2/repo/pool/
 iso-v2/build/
 cache/
 boot.log
-*.log
+*.logrecipe.txt
