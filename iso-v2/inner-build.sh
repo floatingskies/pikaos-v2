@@ -94,42 +94,6 @@ deb http://deb.debian.org/debian sid main contrib non-free non-free-firmware
 deb [trusted=yes] file:$REPO_MNT ./
 EOF
 
-# deb-multimedia: unofficial, but the only source of libdvdcss2 on amd64, which
-# is why PikaOS ships it too. Note it does NOT provide the patition-free codecs
-# (there is no w64codecs); those are not redistributable and Debian sid's own
-# gstreamer1.0-plugins/libav cover playback.
-log "adding deb-multimedia (keyring pinned, then verified by apt)"
-# Fetch through whichever downloader the builder image carries: it has wget but
-# not curl, and rebuilding the image just to add one would cost more than it
-# saves.
-fetch_to() {
-    local url="$1" dest="$2"
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --retry 3 -o "$dest" "$url"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q -t 3 -O "$dest" "$url"
-    else
-        die "neither curl nor wget is available to fetch $url"
-    fi
-}
-DM_KEYRING_URL="https://deb-multimedia.org/pool/main/d/deb-multimedia-keyring/deb-multimedia-keyring_2024.9.1_all.deb"
-if fetch_to "$DM_KEYRING_URL" /tmp/deb-multimedia-keyring.deb; then
-    install -Dm0644 /tmp/deb-multimedia-keyring.deb "$ROOTFS_PATH/tmp/deb-multimedia-keyring.deb"
-    chroot "$ROOTFS_PATH" dpkg -i /tmp/deb-multimedia-keyring.deb >/dev/null
-    rm -f "$ROOTFS_PATH/tmp/deb-multimedia-keyring.deb" /tmp/deb-multimedia-keyring.deb
-else
-    die "could not fetch the deb-multimedia keyring ($DM_KEYRING_URL)"
-fi
-cat > "$ROOTFS_PATH/etc/apt/sources.list.d/deb-multimedia.list" <<EOF
-# PikaOS ships this too: libdvdcss2 (DVD) is only packaged there for amd64.
-deb http://deb-multimedia.org/ sid main
-EOF
-
-# The v2 repo ships PikaOS' own desktop-base (branding, active-theme), which
-# collides with the Debian one debootstrap installed. Remove Debian's first so
-# apt can take PikaOS' version instead of refusing the transaction.
-chroot "$ROOTFS_PATH" apt-get purge -y desktop-base >/dev/null 2>&1 || true
-
 log "apt-get install ($MODE packages)"
 PKGS_LINE="$(printf '%s' "$PKGS" | tr '\n' ' ')"
 if [ "$MODE" = full ]; then APT_OPTS=""; else APT_OPTS="--no-install-recommends"; fi

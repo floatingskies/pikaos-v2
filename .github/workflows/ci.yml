@@ -227,18 +227,12 @@ jobs:
           # (MIRROR -> deb.debian.org, PIKA_V2_REPO_URL -> the Pages repo,
           # REPO_MNT -> the local ISO pool) and cannot be checked statically, so
           # only literal hosts are enforced here; the PikaOS apt checks above
-          # still cover the variable ones. deb-multimedia is deliberate.
           grep -rhE '^[[:space:]]*deb ' config/pika-install iso-v2/*.sh iso-v2/config/*.sh \
             | grep -v 'deb.debian.org' \
-            | grep -v 'deb-multimedia.org' \
             | grep -vE '^[[:space:]]*deb .*[$]\{?[A-Za-z_]' && {
             echo "::error::a sources.list entry points somewhere unexpected"
             exit 1
           }
-          # deb-multimedia is allowed (and deliberate) for libdvdcss2, but it
-          # must be explicit rather than a wildcard.
-          grep -rq 'deb-multimedia' iso-v2/ config/ \
-            || { echo "::error::deb-multimedia was removed; libdvdcss2 needs it"; exit 1; }
           echo "no upstream apt dependency"
 
   shellcheck:

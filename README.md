@@ -131,8 +131,7 @@ one package does not rebuild the fleet.
 * Packages are rebuilt from `git.pika-os.com` with their upstream names intact,
   so they stay trackable against upstream; nothing is forked silently.
 * The image itself needs no PikaOS apt repo: `sources.list` is plain Debian sid
-  (plus `deb-multimedia` for `libdvdcss2`, which Debian does not package for
-  amd64). CI enforces both.
+  CI enforces both. Third-party repositories are not used.
 * `pikman`'s Debian dependencies were reduced to what we actually ship
   (`apt-utils`, `flatpak`, `podman`), dropping the PikaOS-only
   `pika-apx-configs` / `vanilla-apx-gui`.

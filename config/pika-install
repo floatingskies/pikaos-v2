@@ -345,19 +345,6 @@ configure_target() {
 deb $DEBIAN_MIRROR $DEBIAN_SUITE main contrib non-free non-free-firmware
 EOF
     run mkdir -p "$TARGET/etc/apt/sources.list.d"
-    # deb-multimedia carries libdvdcss2 (DVD) for amd64, which no Debian
-    # package provides. It is already configured in the live rootfs, but write
-    # it explicitly so a fresh install never depends on that surviving the
-    # rsync.
-    if [ -f "$TARGET/etc/apt/sources.list.d/deb-multimedia.list" ]; then
-        say "deb-multimedia enabled (libdvdcss2)"
-    else
-        emit "$TARGET/etc/apt/sources.list.d/deb-multimedia.list" <<'EOF'
-# libdvdcss2 (DVD) is only packaged here for amd64; PikaOS ships it too.
-deb http://deb-multimedia.org/ sid main
-EOF
-        warn "added deb-multimedia; install deb-multimedia-keyring if apt complains"
-    fi
     emit "$TARGET/etc/apt/sources.list.d/pikaos-v2.list" <<EOF
 # PikaOS v2 packages (flat, un-signed repository).
 # Keep this line so the installed system receives PikaOS-v2 updates.
