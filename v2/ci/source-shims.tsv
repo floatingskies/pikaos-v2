@@ -1,0 +1,66 @@
+# Source-level fixes applied to a fetched tree before the build runs.
+#
+# Separate from isa-shims.txt (ISA level) and script-shims.tsv (maintainer
+# scripts): this is for defects in the upstream source that make the package
+# unusable in this image, where the fix is unambiguous and upstream-side.
+#
+# Format: <path-glob-relative-to-tree>\t<literal from>\t<literal to>
+# Blank lines and '#' comments ignored. Literal, not regex.
+#
+# ---------------------------------------------------------------------------
+# custom-gui-packages/*: abort when $LANG has no .UTF-8 suffix
+# ---------------------------------------------------------------------------
+# Symptom, reproduced on pika-drivers 1.0.0-101pika7:
+#
+#   Process 366778 (pika-drivers) of user 1000 dumped core.
+#   Signal: 6 (ABRT)
+#   #2 abort (libc.so.6 + 0x28507)
+#   #3 n/a (pika-drivers + 0x1cdeba)
+#
+# Cause: src/main.rs does
+#
+#   let current_locale = match env::var_os("LANG") {
+#       Some(v) => v.into_string().unwrap(),
+#       None => panic!("$LANG is not set"),
+#   };
+#   rust_i18n::set_locale(current_locale.strip_suffix(".UTF-8").unwrap());
+#
+# strip_suffix returns None for any LANG without that literal suffix, and the
+# unwrap panics. Cargo.toml sets `panic = "abort"` in [profile.release], so the
+# panic is not unwound and caught -- it becomes abort() and SIGABRT, i.e. the
+# window never appears and the app just dies.
+#
+# Verified as the cause, not guessed: compiled the same two lines with
+# -C panic=abort and ran both ways.
+#
+#   LANG=pt_BR.UTF-8  -> exit 0
+#   LANG=pt_BR        -> panicked at 'called `Option::unwrap()` on a `None` value',
+#                        Aborted, exit 134   (134 = 128+6 = SIGABRT)
+#
+# Which locales trip it: every valid form that is not spelled *exactly* with the
+# ".UTF-8" suffix -- "C", "POSIX", "en_US.utf8" (lowercase!), "pt_BR.utf-8", a
+# bare language code, or LANG exported as something like "en_US.UTF-8.UTF-8".
+# Also LANG unset entirely, which hits the explicit panic! on the None arm.
+#
+# Why this is fixed here rather than by asking users to set LANG properly: the
+# image controls its own locale, and an app that hard-aborts over an
+# environment variable is a bug regardless of what that variable contains. The
+# fix is the one pika-device-manager already ships upstream, which is the
+# clearest evidence it is the right fix and not a workaround:
+#
+#   let locale = current_locale.strip_suffix(".UTF-8").unwrap_or(&current_locale);
+#
+# -- one line, no unwrap, no panic, and an absent LANG falls back to English
+# instead of aborting.
+#
+# Applied to all seven apps that still carry the bug. pika-device-manager is
+# deliberately absent: it is already fixed upstream, so the shim must not match
+# there. A shim that matched a fixed tree would either be a no-op or, worse,
+# corrupt code that was already correct.
+#
+# Note the files are at <tree>/src/main.rs, not <tree>/<name>/src/main.rs: these
+# recipes copy themselves into a subdirectory before building (main.sh does
+# `cp -rvf ./* ./<name>/`), so the path that dpkg-buildpackage sees is nested.
+# The glob matches either.
+src/main.rs	current_locale.strip_suffix(".UTF-8").unwrap()	current_locale.strip_suffix(".UTF-8").unwrap_or(&current_locale)
+src/main.rs	None => panic!("$LANG is not set"),	None => String::from("en_US.UTF-8"),

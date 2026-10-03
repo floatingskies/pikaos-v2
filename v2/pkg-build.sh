@@ -75,11 +75,19 @@ fetch_source() {
   done < <(find "$dst" -path '*/debian/control' -type f)
   [ "$shimmed" = 1 ] && log "dep-shims applied"
 
-  # The other half of the same job. Dropping a dependency also removes whatever
-  # that package created on disk, and a maintainer script that walks the removed
-  # path now fails under `set -e`, leaving the package half-configured. See
-  # v2/ci/script-shims.tsv for the cases and why each one is guarded rather than
-  # "fixed" by restoring the dependency.
+  # Defects in the upstream source itself, as opposed to the ISA level
+  # (isa-shims.txt) or the maintainer scripts (script-shims.tsv). Applied to the
+  # whole tree because these recipes copy themselves into a subdirectory before
+  # building, so the file being fixed may be at src/main.rs or <name>/src/main.rs
+  # depending on how far main.sh got.
+  if [ -s "$HERE/ci/source-shims.tsv" ]; then
+    perl "$HERE/ci/apply-source-shims.pl" "$HERE/ci/source-shims.tsv" "$dst" || exit 1
+  fi
+
+  # The other half of the dep-shim job. Dropping a dependency also removes
+  # whatever that package created on disk, and a maintainer script that walks
+  # the removed path now fails under `set -e`, leaving the package
+  # half-configured. See v2/ci/script-shims.tsv.
   if [ -s "$HERE/ci/script-shims.tsv" ]; then
     local scripts_found=0
     while IFS= read -r ms; do
@@ -206,6 +214,8 @@ fingerprint() {
   sha256sum "$HERE/ci/apply-dep-shims.pl" | cut -d' ' -f1
   sha256sum "$HERE/ci/script-shims.tsv" | cut -d' ' -f1
   sha256sum "$HERE/ci/apply-script-shims.pl" | cut -d' ' -f1
+  sha256sum "$HERE/ci/source-shims.tsv" | cut -d' ' -f1
+  sha256sum "$HERE/ci/apply-source-shims.pl" | cut -d' ' -f1
   # The v3->v2 hardcode rewrites change the build result, so they are part of
   # the identity of a cached deb just like the flags themselves.
   sha256sum "$HERE/ci/isa-shims.txt" | cut -d' ' -f1
