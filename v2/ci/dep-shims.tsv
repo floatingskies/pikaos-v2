@@ -105,3 +105,18 @@ mangohud:i386	-
 mesa-vulkan-drivers:i386	-
 nvidia-vaapi-driver:i386	-
 vkbasalt:i386	-
+
+# Transitive closure of pika-kde-desktop -> pika-baseos -> pika-baseos-minimal
+# and friends. The direct dependencies all resolved; these only show up when the
+# closure is walked, which is what the ISO build does.
+fastmandb	-
+libproxy1-plugin-gsettings	-
+libproxy1-plugin-networkmanager	-
+mesa-stable	-
+mousetweaks	-
+pika-amdgpu-config	-
+pika-i915-config	-
+pika-nvidia-config	-
+# sid calls the firmware blob set firmware-linux (the Ubuntu name is
+# linux-firmware); keep the firmware instead of dropping it.
+linux-firmware	firmware-linux
